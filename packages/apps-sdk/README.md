@@ -22,7 +22,7 @@ Use `files.readAll` and `files.writeAll` for content that may exceed the RPC req
 Use the generated Vanilla TypeScript guide for the complete authoring contract:
 
 ```sh
-bun packages/app-cli/src/cli.ts init examples/my-app com.example.my-app
+bunx @hiraya-team/app-cli init examples/my-app com.example.my-app
 ```
 
 The generated `AGENTS.md` documents commands, sandbox constraints, lifecycle, permissions, handles, revision-safe writes, themes, storage, errors, security, and testing.
