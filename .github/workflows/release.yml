@@ -31,16 +31,16 @@ jobs:
       # npm CLI is required for npm's OIDC trusted publishing and provenance exchange.
       - name: Publish contracts
         run: |
-          version="$(bun -p \"require('./package.json').version\")"
+          version="$(bun -p "require('./package.json').version")"
           npm view "@hiraya-team/apps-contracts@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
         working-directory: packages/apps-contracts
       - name: Publish SDK
         run: |
-          version="$(bun -p \"require('./package.json').version\")"
+          version="$(bun -p "require('./package.json').version")"
           npm view "@hiraya-team/apps-sdk@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
         working-directory: packages/apps-sdk
       - name: Publish CLI
         run: |
-          version="$(bun -p \"require('./package.json').version\")"
+          version="$(bun -p "require('./package.json').version")"
           npm view "@hiraya-team/app-cli@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
         working-directory: packages/app-cli
