@@ -60,12 +60,15 @@ export interface AppCatalog {
   releases: AppCatalogRelease[];
 }
 
-export interface AppManifestWindow {
-  width: number;
-  height: number;
+type AppManifestWindowMinimums = {
   minWidth: number;
   minHeight: number;
-}
+};
+
+export type AppManifestWindow = AppManifestWindowMinimums & (
+  | { width: number; height: number; renderWidth?: never; renderHeight?: never }
+  | { renderWidth: number; renderHeight: number; width?: never; height?: never }
+);
 
 export interface ThemeTokens {
   mode: "light" | "dark";
@@ -392,14 +395,26 @@ export function parseManifestV2(value: unknown): HirayaAppManifestV2 {
   }
   if (manifest.window !== undefined) {
     const window = record(manifest.window, "App window");
-    exact(window, ["width", "height", "minWidth", "minHeight"], [], "App window");
-    result.window = {
-      width: number(window.width, "App window width", { integer: true, min: 1, max: 16_384 }),
-      height: number(window.height, "App window height", { integer: true, min: 1, max: 16_384 }),
+    const usesRenderSize = window.renderWidth !== undefined || window.renderHeight !== undefined;
+    exact(window, usesRenderSize ? ["renderWidth", "renderHeight", "minWidth", "minHeight"] : ["width", "height", "minWidth", "minHeight"], [], "App window");
+    const minimums = {
       minWidth: number(window.minWidth, "App window minimum width", { integer: true, min: 1, max: 16_384 }),
       minHeight: number(window.minHeight, "App window minimum height", { integer: true, min: 1, max: 16_384 }),
     };
-    if (result.window.width < result.window.minWidth || result.window.height < result.window.minHeight) throw new TypeError("App window defaults must not be smaller than its minimums.");
+    if (usesRenderSize) {
+      result.window = {
+        renderWidth: number(window.renderWidth, "App window render width", { integer: true, min: 1, max: 16_384 }),
+        renderHeight: number(window.renderHeight, "App window render height", { integer: true, min: 1, max: 16_384 }),
+        ...minimums,
+      };
+    } else {
+      result.window = {
+        width: number(window.width, "App window width", { integer: true, min: 1, max: 16_384 }),
+        height: number(window.height, "App window height", { integer: true, min: 1, max: 16_384 }),
+        ...minimums,
+      };
+      if (result.window.width < result.window.minWidth || result.window.height < result.window.minHeight) throw new TypeError("App window defaults must not be smaller than its minimums.");
+    }
   }
   return result;
 }

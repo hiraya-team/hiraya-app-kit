@@ -6,5 +6,11 @@
   "version": "0.1.0",
   "entrypoint": "index.html",
   "description": "A Vanilla TypeScript Hiraya app.",
-  "permissions": ["window", "commands", "theme", "storage"]
+  "permissions": ["window", "commands", "theme", "storage"],
+  "window": {
+    "renderWidth": 640,
+    "renderHeight": 480,
+    "minWidth": 360,
+    "minHeight": 260
+  }
 }
