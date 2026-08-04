@@ -1,0 +1,15 @@
+{
+  "name": "@hiraya/apps-contracts",
+  "version": "1.0.0",
+  "description": "Public protocol and package contracts for Hiraya apps.",
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./theme": { "types": "./dist/theme.d.ts", "import": "./dist/theme.js" }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/", "provenance": true },
+  "repository": { "type": "git", "url": "git+https://github.com/hiraya-team/hiraya-app-kit.git", "directory": "packages/apps-contracts" },
+  "license": "MIT"
+}

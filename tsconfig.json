@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["bun"],
+    "baseUrl": ".",
+    "paths": {
+      "@hiraya/apps-contracts": ["packages/apps-contracts/src/index.ts"],
+      "@hiraya/apps-contracts/theme": ["packages/apps-contracts/src/theme.ts"],
+      "@hiraya/apps-sdk": ["packages/apps-sdk/src/index.ts"],
+      "@hiraya/app-cli": ["packages/app-cli/src/archive.ts"]
+    }
+  },
+  "include": ["packages/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["packages/app-cli/templates", "**/*.test.ts"]
+}

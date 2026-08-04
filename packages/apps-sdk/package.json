@@ -1,0 +1,16 @@
+{
+  "name": "@hiraya/apps-sdk",
+  "version": "1.0.0",
+  "description": "Typed browser SDK for sandboxed Hiraya apps.",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/", "provenance": true },
+  "repository": { "type": "git", "url": "git+https://github.com/hiraya-team/hiraya-app-kit.git", "directory": "packages/apps-sdk" },
+  "license": "MIT",
+  "dependencies": {
+    "@hiraya/apps-contracts": "1.0.0"
+  }
+}
