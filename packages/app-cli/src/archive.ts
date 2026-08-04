@@ -1,5 +1,5 @@
-import { parseManifestV2, type AppPackageInspection } from "@hiraya/apps-contracts";
-import { parseCustomTheme, type CustomTheme, type ThemeWallpaperKind } from "@hiraya/apps-contracts/theme";
+import { parseManifestV2, type AppPackageInspection } from "@hiraya-team/apps-contracts";
+import { parseCustomTheme, type CustomTheme, type ThemeWallpaperKind } from "@hiraya-team/apps-contracts/theme";
 import { parse as parseModule } from "acorn";
 import { parse } from "parse5";
 import { unzipSync } from "fflate";

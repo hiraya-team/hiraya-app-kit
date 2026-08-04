@@ -14,13 +14,13 @@ bun run package
 
 `bun run dev` starts Vite for ordinary browser UI work, but host APIs are unavailable outside Hiraya. `bun run build` type-checks and creates `dist/`. `bun run package` builds, validates, and writes a deterministic `.hiraya.app` archive. Run the app through Hiraya to test the real sandbox and permissions.
 
-This starter pins compatible `@hiraya/apps-sdk` and `@hiraya/app-cli` releases exactly so builds are reproducible. Upgrade both together when adopting a newer app-kit release.
+This starter pins compatible `@hiraya-team/apps-sdk` and `@hiraya-team/app-cli` releases exactly so builds are reproducible. Upgrade both together when adopting a newer app-kit release.
 
 ## Sandbox Model
 
 Hiraya loads the packaged app as an opaque-origin sandboxed `srcdoc` frame. Static remote references are rejected; sandbox and Content Security Policy controls block direct network APIs, remote assets, forms, plugins, and top-level navigation, and the host terminates a frame that navigates after boot. Package every script, stylesheet, font, image, and media asset needed by the app. Do not rely on an origin, cookies, browser storage, OPFS, service workers, same-origin desktop internals, direct access to `window.parent`, or ordinary links. Use only brokered SDK services. Browser support for embedded CSP enforcement and `navigate-to` is incomplete, so a dynamic self-navigation request may begin before the host observes its load and removes the frame; this is layered containment, not perfect network isolation.
 
-The only supported host boundary is the typed `MessagePort` owned by `@hiraya/apps-sdk`. Treat the host and every event payload as asynchronous. Do not build a parallel `postMessage` protocol.
+The only supported host boundary is the typed `MessagePort` owned by `@hiraya-team/apps-sdk`. Treat the host and every event payload as asynchronous. Do not build a parallel `postMessage` protocol.
 
 ## Connection And Lifecycle
 

@@ -15,9 +15,9 @@ import {
   type ServiceMethod,
   type ServiceMethods,
   type ThemeTokens,
-} from "@hiraya/apps-contracts";
+} from "@hiraya-team/apps-contracts";
 
-export type * from "@hiraya/apps-contracts";
+export type * from "@hiraya-team/apps-contracts";
 
 export interface RequestOptions {
   signal?: AbortSignal;

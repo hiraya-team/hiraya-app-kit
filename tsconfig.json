@@ -10,10 +10,10 @@
     "types": ["bun"],
     "baseUrl": ".",
     "paths": {
-      "@hiraya/apps-contracts": ["packages/apps-contracts/src/index.ts"],
-      "@hiraya/apps-contracts/theme": ["packages/apps-contracts/src/theme.ts"],
-      "@hiraya/apps-sdk": ["packages/apps-sdk/src/index.ts"],
-      "@hiraya/app-cli": ["packages/app-cli/src/archive.ts"]
+      "@hiraya-team/apps-contracts": ["packages/apps-contracts/src/index.ts"],
+      "@hiraya-team/apps-contracts/theme": ["packages/apps-contracts/src/theme.ts"],
+      "@hiraya-team/apps-sdk": ["packages/apps-sdk/src/index.ts"],
+      "@hiraya-team/app-cli": ["packages/app-cli/src/archive.ts"]
     }
   },
   "include": ["packages/**/*.ts", "scripts/**/*.ts"],

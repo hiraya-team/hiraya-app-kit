@@ -1,7 +1,7 @@
 import { lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseManifestV2 } from "@hiraya/apps-contracts";
+import { parseManifestV2 } from "@hiraya-team/apps-contracts";
 
 const TEMPLATE_DIRECTORY = fileURLToPath(new URL("../templates/vanilla-ts", import.meta.url));
 

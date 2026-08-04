@@ -1,4 +1,4 @@
-import { connectHiraya, HirayaSdkError } from "@hiraya/apps-sdk";
+import { connectHiraya, HirayaSdkError } from "@hiraya-team/apps-sdk";
 import "./style.css";
 
 const APP_ID = "dev.hiraya.starter";

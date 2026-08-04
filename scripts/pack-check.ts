@@ -30,9 +30,11 @@ async function textFiles(directory: string): Promise<string[]> {
 for (const name of packages) {
   const manifest = JSON.parse(await readFile(join(root, "packages", name, "package.json"), "utf8"));
   if (manifest.version !== version) throw new Error(`${name} version must match the root version ${version}.`);
-  const filename = `hiraya-${name}-${version}.tgz`;
+  const existingTarballs = new Set(await readdir(tarballs));
   await run(["bun", "pm", "pack", "--destination", tarballs, "--quiet"], join(root, "packages", name));
-  const archive = join(tarballs, filename);
+  const packedTarballs = (await readdir(tarballs)).filter((filename) => filename.endsWith(".tgz") && !existingTarballs.has(filename));
+  if (packedTarballs.length !== 1) throw new Error(`${name} pack created ${packedTarballs.length} tarballs; expected one.`);
+  const archive = join(tarballs, packedTarballs[0]);
   archives.set(name, archive);
   const extracted = join(temporary, `unpacked-${name}`);
   await mkdir(extracted);
@@ -53,21 +55,21 @@ await writeFile(join(consumer, "package.json"), JSON.stringify({
   private: true,
   type: "module",
   dependencies: {
-    "@hiraya/apps-contracts": archives.get("apps-contracts"),
-    "@hiraya/apps-sdk": archives.get("apps-sdk"),
-    "@hiraya/app-cli": archives.get("app-cli"),
+    "@hiraya-team/apps-contracts": archives.get("apps-contracts"),
+    "@hiraya-team/apps-sdk": archives.get("apps-sdk"),
+    "@hiraya-team/app-cli": archives.get("app-cli"),
   },
   overrides: {
-    "@hiraya/apps-contracts": archives.get("apps-contracts"),
-    "@hiraya/apps-sdk": archives.get("apps-sdk"),
-    "@hiraya/app-cli": archives.get("app-cli"),
+    "@hiraya-team/apps-contracts": archives.get("apps-contracts"),
+    "@hiraya-team/apps-sdk": archives.get("apps-sdk"),
+    "@hiraya-team/app-cli": archives.get("app-cli"),
   },
 }, null, 2));
 await writeFile(join(consumer, "imports.ts"), `
-import { parseManifestV2 } from "@hiraya/apps-contracts";
-import { parseCustomTheme } from "@hiraya/apps-contracts/theme";
-import { connectHiraya } from "@hiraya/apps-sdk";
-import { APP_MANIFEST_PATH, inspectAppArchive } from "@hiraya/app-cli";
+import { parseManifestV2 } from "@hiraya-team/apps-contracts";
+import { parseCustomTheme } from "@hiraya-team/apps-contracts/theme";
+import { connectHiraya } from "@hiraya-team/apps-sdk";
+import { APP_MANIFEST_PATH, inspectAppArchive } from "@hiraya-team/app-cli";
 if (typeof parseManifestV2 !== "function" || typeof parseCustomTheme !== "function" || typeof connectHiraya !== "function" || typeof inspectAppArchive !== "function" || APP_MANIFEST_PATH !== "hiraya.app.json") throw new Error("Published exports are incomplete.");
 `);
 await run(["bun", "install"], consumer);
@@ -78,12 +80,12 @@ const app = join(consumer, "sample-app");
 await run([bin, "init", app, "com.example.sample"], consumer);
 const appPackagePath = join(app, "package.json");
 const appPackage = JSON.parse(await readFile(appPackagePath, "utf8"));
-appPackage.dependencies["@hiraya/apps-sdk"] = archives.get("apps-sdk");
-appPackage.devDependencies["@hiraya/app-cli"] = archives.get("app-cli");
+appPackage.dependencies["@hiraya-team/apps-sdk"] = archives.get("apps-sdk");
+appPackage.devDependencies["@hiraya-team/app-cli"] = archives.get("app-cli");
 appPackage.overrides = {
-  "@hiraya/apps-contracts": archives.get("apps-contracts"),
-  "@hiraya/apps-sdk": archives.get("apps-sdk"),
-  "@hiraya/app-cli": archives.get("app-cli"),
+  "@hiraya-team/apps-contracts": archives.get("apps-contracts"),
+  "@hiraya-team/apps-sdk": archives.get("apps-sdk"),
+  "@hiraya-team/app-cli": archives.get("app-cli"),
 };
 await writeFile(appPackagePath, `${JSON.stringify(appPackage, null, 2)}\n`);
 await run(["bun", "install"], app);

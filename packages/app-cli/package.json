@@ -1,5 +1,5 @@
 {
-  "name": "@hiraya/app-cli",
+  "name": "@hiraya-team/app-cli",
   "version": "1.0.0",
   "description": "CLI and secure archive inspection library for Hiraya apps and themes.",
   "type": "module",
@@ -13,7 +13,7 @@
   "repository": { "type": "git", "url": "git+https://github.com/hiraya-team/hiraya-app-kit.git", "directory": "packages/app-cli" },
   "license": "MIT",
   "dependencies": {
-    "@hiraya/apps-contracts": "1.0.0",
+    "@hiraya-team/apps-contracts": "1.0.0",
     "acorn": "8.17.0",
     "fflate": "0.8.3",
     "parse5": "8.0.0"

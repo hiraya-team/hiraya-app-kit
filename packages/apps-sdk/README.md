@@ -1,9 +1,9 @@
-# `@hiraya/apps-sdk`
+# `@hiraya-team/apps-sdk`
 
 Typed client SDK for apps running inside the Hiraya sandbox.
 
 ```ts
-import { connectHiraya } from "@hiraya/apps-sdk";
+import { connectHiraya } from "@hiraya-team/apps-sdk";
 
 const hiraya = await connectHiraya({ appId: "com.example.notes" });
 const launch = await hiraya.app.getLaunchContext();

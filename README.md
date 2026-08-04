@@ -4,14 +4,14 @@ Public contracts, browser SDK, and packaging CLI for third-party Hiraya apps.
 
 ## Packages
 
-- `@hiraya/apps-contracts` provides protocol types and strict boundary validation. Portable desktop-theme contracts are available from `@hiraya/apps-contracts/theme`.
-- `@hiraya/apps-sdk` provides the typed browser client used inside the Hiraya app sandbox.
-- `@hiraya/app-cli` provides Node-free archive inspection from its root export and the `hiraya-app` executable for creating, validating, inspecting, and deterministically packaging apps and themes.
+- `@hiraya-team/apps-contracts` provides protocol types and strict boundary validation. Portable desktop-theme contracts are available from `@hiraya-team/apps-contracts/theme`.
+- `@hiraya-team/apps-sdk` provides the typed browser client used inside the Hiraya app sandbox.
+- `@hiraya-team/app-cli` provides Node-free archive inspection from its root export and the `hiraya-app` executable for creating, validating, inspecting, and deterministically packaging apps and themes.
 
 ## Create An App
 
 ```sh
-bunx @hiraya/app-cli init my-app com.example.my-app
+bunx @hiraya-team/app-cli init my-app com.example.my-app
 cd my-app
 bun install
 bun run build
