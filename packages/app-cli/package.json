@@ -4,13 +4,31 @@
   "description": "CLI and secure archive inspection library for Hiraya apps and themes.",
   "type": "module",
   "bin": {
-    "hiraya-app": "./dist/cli.js"
+    "hiraya-app": "dist/cli.js"
   },
-  "exports": { ".": { "types": "./dist/archive.d.ts", "import": "./dist/archive.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/archive.d.ts",
+      "import": "./dist/archive.js"
+    }
+  },
   "types": "./dist/archive.d.ts",
-  "files": ["dist", "templates", "README.md", "LICENSE"],
-  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/", "provenance": true },
-  "repository": { "type": "git", "url": "git+https://github.com/hiraya-team/hiraya-app-kit.git", "directory": "packages/app-cli" },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiraya-team/hiraya-app-kit.git",
+    "directory": "packages/app-cli"
+  },
   "license": "MIT",
   "dependencies": {
     "@hiraya-team/apps-contracts": "1.0.0",

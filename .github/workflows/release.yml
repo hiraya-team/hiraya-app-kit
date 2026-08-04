@@ -27,9 +27,18 @@ jobs:
       - name: Verify release version
         run: test "$GITHUB_REF_NAME" = "v$(bun -p \"require('./package.json').version\")"
       # npm CLI is required for npm's OIDC trusted publishing and provenance exchange.
-      - run: npm publish --access public --provenance
+      - name: Publish contracts
+        run: |
+          version="$(bun -p \"require('./package.json').version\")"
+          npm view "@hiraya-team/apps-contracts@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
         working-directory: packages/apps-contracts
-      - run: npm publish --access public --provenance
+      - name: Publish SDK
+        run: |
+          version="$(bun -p \"require('./package.json').version\")"
+          npm view "@hiraya-team/apps-sdk@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
         working-directory: packages/apps-sdk
-      - run: npm publish --access public --provenance
+      - name: Publish CLI
+        run: |
+          version="$(bun -p \"require('./package.json').version\")"
+          npm view "@hiraya-team/app-cli@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
         working-directory: packages/app-cli
