@@ -25,7 +25,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck && bun test && bun run lint && bun run pack:check
       - name: Verify release version
-        run: test "$GITHUB_REF_NAME" = "v$(bun -p \"require('./package.json').version\")"
+        run: |
+          version="$(bun -p "require('./package.json').version")"
+          test "$GITHUB_REF_NAME" = "v$version"
       # npm CLI is required for npm's OIDC trusted publishing and provenance exchange.
       - name: Publish contracts
         run: |
