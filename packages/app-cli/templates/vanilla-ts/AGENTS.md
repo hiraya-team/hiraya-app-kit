@@ -26,6 +26,8 @@ The only supported host boundary is the typed `MessagePort` owned by `@hiraya-te
 
 The app ID passed to `connectHiraya({ appId })` must exactly match `public/hiraya.app.json`. App manifests require `schemaVersion: 2` and `uiRuntime: 1`; older schemas and unsupported UI runtimes cannot be packaged. Keep the app ID as a source constant so package identity changes are explicit.
 
+Manifest `window.renderWidth` and `window.renderHeight` set the initial app viewport size; Hiraya adds its current window chrome around that area and clamps the result to the desktop. Use legacy `window.width` and `window.height` only when you need to specify the complete outer window size. `minWidth` and `minHeight` always limit the outer window.
+
 ```ts
 const hiraya = await connectHiraya({ appId: "com.example.my-app" });
 const launch = await hiraya.app.getLaunchContext();

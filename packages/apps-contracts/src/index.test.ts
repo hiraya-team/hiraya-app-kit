@@ -43,7 +43,11 @@ describe("apps contracts", () => {
     expect(() => parseManifestV2({ ...manifest, permissions: ["files:read", "files:read"] })).toThrow("duplicates");
     expect(() => parseManifestV2({ ...manifest, entrypoint: "../index.html" })).toThrow("entrypoint");
     expect(parseManifestV2({ ...manifest, window: { width: 900, height: 700, minWidth: 400, minHeight: 300 } }).window).toEqual({ width: 900, height: 700, minWidth: 400, minHeight: 300 });
+    expect(parseManifestV2({ ...manifest, window: { renderWidth: 900, renderHeight: 700, minWidth: 400, minHeight: 300 } }).window).toEqual({ renderWidth: 900, renderHeight: 700, minWidth: 400, minHeight: 300 });
     expect(() => parseManifestV2({ ...manifest, window: { width: 300, height: 700, minWidth: 400, minHeight: 300 } })).toThrow("minimums");
+    expect(() => parseManifestV2({ ...manifest, window: { width: 900, height: 700, renderWidth: 900, renderHeight: 700, minWidth: 400, minHeight: 300 } })).toThrow("unsupported shape");
+    expect(() => parseManifestV2({ ...manifest, window: { renderWidth: 900, minWidth: 400, minHeight: 300 } })).toThrow("unsupported shape");
+    expect(() => parseManifestV2({ ...manifest, window: { renderWidth: 900.5, renderHeight: 700, minWidth: 400, minHeight: 300 } })).toThrow("render width");
     expect(() => parseManifestV2({ ...manifest, window: { width: 900, height: 700, minWidth: 400, minHeight: 300, extra: 1 } })).toThrow("unsupported shape");
     expect(() => parseManifestV2({ ...manifest, window: { width: 900.5, height: 700, minWidth: 400, minHeight: 300 } })).toThrow("width");
     expect(() => parseManifestV2({ ...manifest, window: { width: 900, height: 700, minWidth: 400 } })).toThrow("unsupported shape");
