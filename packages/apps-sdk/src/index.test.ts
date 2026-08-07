@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { connectHiraya, HirayaSdkError, type FileHandle, type ThemeTarget, type ThemeTokens } from "./index";
+import { connectHiraya, HirayaSdkError, type FileHandle, type ThemeDefinition, type ThemeEditorState, type ThemeTarget, type ThemeTokens } from "./index";
 
 const darkTheme: ThemeTokens = {
   mode: "dark", background: "#000", surface: "#111", surfaceElevated: "#222", text: "#fff", textMuted: "#aaa", border: "#333", accent: "#fc0", accentText: "#000", danger: "#f00", focus: "#ff0",
@@ -140,6 +140,27 @@ describe("apps SDK", () => {
     }));
     channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "theme.changed", payload: darkTheme });
     await changed;
+    client.close();
+    channel.port2.close();
+  });
+
+  test("exposes theme management requests and change events", async () => {
+    const channel = new MessageChannel();
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const state: ThemeEditorState = { selectedThemeId: "hiraya-dusk", themes: [{ id: "hiraya-dusk", name: "Hiraya Dusk", definition: { colors: Object.fromEntries(["shell", "chrome", "chromeText", "window", "windowMuted", "text", "textMuted", "accent", "accentText", "border", "danger", "dangerSurface", "desktopText", "selection", "editorBackground", "editorText", "editorGutter", "editorKeyword", "editorString", "editorComment"].map((key) => [key, "#000000"])) as ThemeDefinition["colors"], shape: { radius: 0, borderWidth: 0 }, effects: { blur: 0, opacity: 1, shadow: 0 }, typography: { family: "system", scale: 1, weight: 400 }, density: 1, motion: 1, iconSize: 48 }, builtIn: true, hasWallpaper: true }], canManage: true, restrictionReason: "" };
+    channel.port2.onmessage = ({ data }) => { requests.push(data); channel.port2.postMessage({ protocolVersion: 1, type: "response", id: data.id, ok: true, result: state }); };
+    const client = await connectHiraya({ port: channel.port1 });
+    await client.themes.getState();
+    await client.themes.select("hiraya-dusk");
+    await client.themes.save({ id: "custom", name: "Custom", definition: state.themes[0].definition });
+    await client.themes.delete("custom");
+    const changed = new Promise<ThemeEditorState>((resolve) => client.on("themes.changed", resolve));
+    channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "themes.changed", payload: state });
+    expect(await changed).toEqual(state);
+    expect(requests.map(({ method, params }) => ({ method, params }))).toEqual([
+      { method: "themes.getState", params: {} }, { method: "themes.select", params: { themeId: "hiraya-dusk" } },
+      { method: "themes.save", params: { id: "custom", name: "Custom", definition: state.themes[0].definition } }, { method: "themes.delete", params: { themeId: "custom" } },
+    ]);
     client.close();
     channel.port2.close();
   });
