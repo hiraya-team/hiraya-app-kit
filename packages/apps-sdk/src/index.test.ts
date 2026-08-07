@@ -169,7 +169,8 @@ describe("apps SDK", () => {
     const channel = new MessageChannel();
     const requests: Array<{ method: string; params: unknown }> = [];
     const wallpaper = { source: "wallpaper-1", fit: "cover", positionX: 50, positionY: 50, blur: 0, dim: 0.2, overlayColor: "#000000", overlayOpacity: 0 } as const;
-    const state: WallpaperEditorState = { wallpaper, images: [{ id: "wallpaper-1", name: "Sky.webp" }], currentName: "Sky.webp", canManage: true, restrictionReason: "" };
+    const state: WallpaperEditorState = { wallpaper, currentName: "Sky.webp", canManage: true, restrictionReason: "" };
+    const handle = "file_0123456789abcdef" as FileHandle;
     const image = { data: new ArrayBuffer(2), mimeType: "image/webp" };
     channel.port2.onmessage = ({ data }) => {
       requests.push(data);
@@ -181,7 +182,7 @@ describe("apps SDK", () => {
     await client.wallpapers.preview(wallpaper);
     expect(await client.wallpapers.save(wallpaper)).toEqual(state);
     expect(await client.wallpapers.upload("Sky.webp", "image/webp", new ArrayBuffer(2))).toEqual(state);
-    expect(await client.wallpapers.select("wallpaper-1")).toEqual(state);
+    expect(await client.wallpapers.select(handle)).toEqual(state);
     expect(await client.wallpapers.readCurrentImage()).toEqual(image);
     const changed = new Promise<WallpaperEditorState>((resolve) => client.on("wallpapers.changed", resolve));
     channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "wallpapers.changed", payload: state });
@@ -191,7 +192,7 @@ describe("apps SDK", () => {
       { method: "wallpapers.preview", params: { wallpaper } },
       { method: "wallpapers.save", params: { wallpaper } },
       { method: "wallpapers.upload", params: { name: "Sky.webp", mimeType: "image/webp", data: new ArrayBuffer(2) } },
-      { method: "wallpapers.select", params: { fileId: "wallpaper-1" } },
+      { method: "wallpapers.select", params: { handle } },
       { method: "wallpapers.readCurrentImage", params: {} },
     ]);
     client.close();

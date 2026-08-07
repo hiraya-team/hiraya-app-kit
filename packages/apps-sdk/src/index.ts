@@ -175,7 +175,7 @@ export class HirayaClient {
     preview: (wallpaper: ServiceMethods["wallpapers.preview"]["params"]["wallpaper"], options?: RequestOptions) => this.request("wallpapers.preview", { wallpaper }, options),
     save: (wallpaper: ServiceMethods["wallpapers.save"]["params"]["wallpaper"], options?: RequestOptions) => this.request("wallpapers.save", { wallpaper }, options),
     upload: (name: string, mimeType: string, data: ArrayBuffer, options?: RequestOptions) => this.request("wallpapers.upload", { name, mimeType, data }, options),
-    select: (fileId: string, options?: RequestOptions) => this.request("wallpapers.select", { fileId }, options),
+    select: (handle: FileHandle, options?: RequestOptions) => this.request("wallpapers.select", { handle }, options),
     readCurrentImage: (options?: RequestOptions) => this.request("wallpapers.readCurrentImage", {}, options),
   };
 

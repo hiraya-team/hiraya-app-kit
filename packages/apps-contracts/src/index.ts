@@ -251,14 +251,8 @@ export interface WallpaperEditorWallpaper {
   overlayOpacity: number;
 }
 
-export interface WallpaperEditorImage {
-  id: string;
-  name: string;
-}
-
 export interface WallpaperEditorState {
   wallpaper: WallpaperEditorWallpaper;
-  images: WallpaperEditorImage[];
   currentName: string;
   canManage: boolean;
   restrictionReason: string;
@@ -316,7 +310,7 @@ export interface ServiceMethods {
   "wallpapers.preview": { params: { wallpaper: WallpaperEditorWallpaper }; result: void };
   "wallpapers.save": { params: { wallpaper: WallpaperEditorWallpaper }; result: WallpaperEditorState };
   "wallpapers.upload": { params: { name: string; mimeType: string; data: ArrayBuffer }; result: WallpaperEditorState };
-  "wallpapers.select": { params: { fileId: string }; result: WallpaperEditorState };
+  "wallpapers.select": { params: { handle: FileHandle }; result: WallpaperEditorState };
   "wallpapers.readCurrentImage": { params: Record<string, never>; result: { data: ArrayBuffer; mimeType: string } | null };
   "storage.get": { params: { key: string }; result: JsonValue | undefined };
   "storage.set": { params: { key: string; value: JsonValue }; result: void };
@@ -633,17 +627,9 @@ export function parseWallpaperEditorWallpaper(value: unknown): WallpaperEditorWa
 
 export function parseWallpaperEditorState(value: unknown): WallpaperEditorState {
   const state = record(value, "Wallpaper editor state");
-  exact(state, ["wallpaper", "images", "currentName", "canManage", "restrictionReason"], [], "Wallpaper editor state");
-  if (!Array.isArray(state.images) || state.images.length > 10_000) throw new TypeError("Wallpaper editor images are invalid.");
-  const images = state.images.map((value) => {
-    const image = record(value, "Wallpaper editor image");
-    exact(image, ["id", "name"], [], "Wallpaper editor image");
-    return { id: text(image.id, "Wallpaper image ID", 256), name: text(image.name, "Wallpaper image name", 255) };
-  });
-  if (new Set(images.map(({ id }) => id)).size !== images.length) throw new TypeError("Wallpaper editor image IDs contain duplicates.");
+  exact(state, ["wallpaper", "currentName", "canManage", "restrictionReason"], [], "Wallpaper editor state");
   return {
     wallpaper: parseWallpaperEditorWallpaper(state.wallpaper),
-    images,
     currentName: text(state.currentName, "Current wallpaper name", 255),
     canManage: boolean(state.canManage, "Wallpaper management capability"),
     restrictionReason: state.restrictionReason === "" ? "" : text(state.restrictionReason, "Wallpaper restriction reason", 500),
@@ -693,7 +679,7 @@ export function parseServiceParams<M extends ServiceMethod>(method: M, value: un
     case "themes.save": shape(["id", "name", "definition"]); result = parseCustomTheme(params); break;
     case "wallpapers.preview": case "wallpapers.save": shape(["wallpaper"]); result = { wallpaper: parseWallpaperEditorWallpaper(params.wallpaper) }; break;
     case "wallpapers.upload": shape(["name", "mimeType", "data"]); { const data = arrayBuffer(params.data, "Wallpaper image data"); if (data.byteLength > MAX_WALLPAPER_IMAGE_BYTES) throw new TypeError("Wallpaper image data exceeds the upload limit."); if (params.mimeType !== "image/jpeg" && params.mimeType !== "image/png" && params.mimeType !== "image/webp") throw new TypeError("Wallpaper image MIME type is invalid."); result = { name: text(params.name, "Wallpaper image name", 255), mimeType: params.mimeType, data }; } break;
-    case "wallpapers.select": shape(["fileId"]); result = { fileId: text(params.fileId, "Wallpaper file ID", 256) }; break;
+    case "wallpapers.select": shape(["handle"]); result = { handle: parseFileHandle(params.handle) }; break;
     case "storage.get": case "storage.remove": shape(["key"]); result = { key: text(params.key, "Storage key", 128) }; break;
     case "storage.set": shape(["key", "value"]); result = { key: text(params.key, "Storage key", 128), value: parseJsonValue(params.value) }; break;
     default: throw new TypeError("RPC method is invalid.");
