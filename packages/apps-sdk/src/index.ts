@@ -165,6 +165,15 @@ export class HirayaClient {
     delete: (themeId: string, options?: RequestOptions) => this.request("themes.delete", { themeId }, options),
   };
 
+  readonly wallpapers = {
+    getState: (options?: RequestOptions) => this.request("wallpapers.getState", {}, options),
+    preview: (wallpaper: ServiceMethods["wallpapers.preview"]["params"]["wallpaper"], options?: RequestOptions) => this.request("wallpapers.preview", { wallpaper }, options),
+    save: (wallpaper: ServiceMethods["wallpapers.save"]["params"]["wallpaper"], options?: RequestOptions) => this.request("wallpapers.save", { wallpaper }, options),
+    upload: (name: string, mimeType: string, data: ArrayBuffer, options?: RequestOptions) => this.request("wallpapers.upload", { name, mimeType, data }, options),
+    select: (fileId: string, options?: RequestOptions) => this.request("wallpapers.select", { fileId }, options),
+    readCurrentImage: (options?: RequestOptions) => this.request("wallpapers.readCurrentImage", {}, options),
+  };
+
   readonly storage = {
     get: (key: string, options?: RequestOptions) => this.request("storage.get", { key }, options),
     set: (key: string, value: JsonValue, options?: RequestOptions) => this.request("storage.set", { key, value }, options),

@@ -10,6 +10,7 @@ import {
   parseServiceResult,
   parseThemeEditorState,
   parseThemeTokens,
+  parseWallpaperEditorState,
 } from "./index";
 
 const theme = {
@@ -142,5 +143,21 @@ describe("apps contracts", () => {
     expect(() => parseThemeEditorState({ ...state, extra: true })).toThrow("unsupported shape");
     expect(() => parseThemeEditorState({ ...state, themes: Array.from({ length: 29 }, (_, index) => ({ ...editorTheme, id: `built-in-${index}` })) })).toThrow("invalid");
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "themes", method: "themes.save", params: { id: "custom", name: "Custom", definition: editorDefinition, extra: true } })).toThrow("unsupported shape");
+  });
+
+  test("strictly validates the wallpaper editor protocol", () => {
+    const wallpaper = { source: "wallpaper-1", fit: "cover", positionX: 50, positionY: 40, blur: 2, dim: 0.2, overlayColor: "#AABBCC", overlayOpacity: 0.1 } as const;
+    const state = { wallpaper, images: [{ id: "wallpaper-1", name: "Sky.webp" }], currentName: "Sky.webp", canManage: true, restrictionReason: "" };
+    expect(parseWallpaperEditorState(state)).toEqual(state);
+    expect(parseServiceResult("wallpapers.getState", state)).toEqual(state);
+    expect(parseServiceResult("wallpapers.readCurrentImage", { data: new ArrayBuffer(2), mimeType: "image/webp" })).toEqual({ data: new ArrayBuffer(2), mimeType: "image/webp" });
+    expect(parseServiceResult("wallpapers.readCurrentImage", null)).toBeNull();
+    expect(parseRpcRequest({ protocolVersion: 1, type: "request", id: "preview", method: "wallpapers.preview", params: { wallpaper } })).toEqual(expect.objectContaining({ params: { wallpaper } }));
+    expect(parseRpcEvent({ protocolVersion: 1, type: "event", event: "wallpapers.changed", payload: state })).toEqual(expect.objectContaining({ payload: state }));
+    expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "upload", method: "wallpapers.upload", params: { name: "bad.gif", mimeType: "image/gif", data: new ArrayBuffer(1) } })).toThrow("MIME");
+    expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "upload", method: "wallpapers.upload", params: { name: "large.png", mimeType: "image/png", data: new ArrayBuffer(20 * 1024 * 1024 + 1) } })).toThrow("upload limit");
+    expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "save", method: "wallpapers.save", params: { wallpaper: { ...wallpaper, blur: 25 } } })).toThrow("blur");
+    expect(() => parseWallpaperEditorState({ ...state, images: [{ id: "wallpaper-1", name: "Sky.webp", extra: true }] })).toThrow("unsupported shape");
+    expect(() => parseWallpaperEditorState({ ...state, images: Array.from({ length: 10_001 }, (_, index) => ({ id: `image-${index}`, name: "Image" })) })).toThrow("invalid");
   });
 });

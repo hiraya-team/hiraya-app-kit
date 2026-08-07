@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { connectHiraya, HirayaSdkError, type FileHandle, type ThemeDefinition, type ThemeEditorState, type ThemeTarget, type ThemeTokens } from "./index";
+import { connectHiraya, HirayaSdkError, type FileHandle, type ThemeDefinition, type ThemeEditorState, type ThemeTarget, type ThemeTokens, type WallpaperEditorState } from "./index";
 
 const darkTheme: ThemeTokens = {
   mode: "dark", background: "#000", surface: "#111", surfaceElevated: "#222", text: "#fff", textMuted: "#aaa", border: "#333", accent: "#fc0", accentText: "#000", danger: "#f00", focus: "#ff0",
@@ -160,6 +160,39 @@ describe("apps SDK", () => {
     expect(requests.map(({ method, params }) => ({ method, params }))).toEqual([
       { method: "themes.getState", params: {} }, { method: "themes.select", params: { themeId: "hiraya-dusk" } },
       { method: "themes.save", params: { id: "custom", name: "Custom", definition: state.themes[0].definition } }, { method: "themes.delete", params: { themeId: "custom" } },
+    ]);
+    client.close();
+    channel.port2.close();
+  });
+
+  test("exposes wallpaper management requests, results, and change events", async () => {
+    const channel = new MessageChannel();
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const wallpaper = { source: "wallpaper-1", fit: "cover", positionX: 50, positionY: 50, blur: 0, dim: 0.2, overlayColor: "#000000", overlayOpacity: 0 } as const;
+    const state: WallpaperEditorState = { wallpaper, images: [{ id: "wallpaper-1", name: "Sky.webp" }], currentName: "Sky.webp", canManage: true, restrictionReason: "" };
+    const image = { data: new ArrayBuffer(2), mimeType: "image/webp" };
+    channel.port2.onmessage = ({ data }) => {
+      requests.push(data);
+      const result = data.method === "wallpapers.preview" ? undefined : data.method === "wallpapers.readCurrentImage" ? image : state;
+      channel.port2.postMessage({ protocolVersion: 1, type: "response", id: data.id, ok: true, result });
+    };
+    const client = await connectHiraya({ port: channel.port1 });
+    expect(await client.wallpapers.getState()).toEqual(state);
+    await client.wallpapers.preview(wallpaper);
+    expect(await client.wallpapers.save(wallpaper)).toEqual(state);
+    expect(await client.wallpapers.upload("Sky.webp", "image/webp", new ArrayBuffer(2))).toEqual(state);
+    expect(await client.wallpapers.select("wallpaper-1")).toEqual(state);
+    expect(await client.wallpapers.readCurrentImage()).toEqual(image);
+    const changed = new Promise<WallpaperEditorState>((resolve) => client.on("wallpapers.changed", resolve));
+    channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "wallpapers.changed", payload: state });
+    expect(await changed).toEqual(state);
+    expect(requests.map(({ method, params }) => ({ method, params }))).toEqual([
+      { method: "wallpapers.getState", params: {} },
+      { method: "wallpapers.preview", params: { wallpaper } },
+      { method: "wallpapers.save", params: { wallpaper } },
+      { method: "wallpapers.upload", params: { name: "Sky.webp", mimeType: "image/webp", data: new ArrayBuffer(2) } },
+      { method: "wallpapers.select", params: { fileId: "wallpaper-1" } },
+      { method: "wallpapers.readCurrentImage", params: {} },
     ]);
     client.close();
     channel.port2.close();
