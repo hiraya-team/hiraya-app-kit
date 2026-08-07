@@ -5,6 +5,7 @@ import {
   parseRpcEvent,
   parseRpcResponse,
   parseServiceResult,
+  type AppBackResult,
   type CommandDefinition,
   type FileHandle,
   type FolderHandle,
@@ -47,6 +48,8 @@ export interface FileWriteAllOptions extends RequestOptions {
   expectedRevision?: number;
 }
 
+export type BackHandler = (signal: AbortSignal) => AppBackResult | Promise<AppBackResult>;
+
 type PendingRequest = {
   method: ServiceMethod;
   resolve(value: unknown): void;
@@ -84,6 +87,8 @@ export class HirayaClient {
   readonly app = {
     getLaunchContext: (options?: RequestOptions) => this.request("app.getLaunchContext", {}, options),
     getCapabilities: (options?: RequestOptions) => this.request("app.getCapabilities", {}, options),
+    setBackHandler: (handler: BackHandler, options?: RequestOptions) => this.setBackHandler(handler, options),
+    clearBackHandler: (options?: RequestOptions) => this.clearBackHandler(options),
   };
 
   readonly files = {
@@ -185,6 +190,8 @@ export class HirayaClient {
   private readonly subscriptions = new Map<ServiceEvent, Set<(payload: never) => void>>();
   private nextId = 0;
   private closed = false;
+  private backHandler?: BackHandler;
+  private activeBackRequest?: AbortController;
 
   constructor(
     private readonly port: MessagePort,
@@ -278,9 +285,29 @@ export class HirayaClient {
     };
   }
 
+  private async setBackHandler(handler: BackHandler, options?: RequestOptions): Promise<void> {
+    if (typeof handler !== "function") throw new TypeError("Back handler must be a function.");
+    const previous = this.backHandler;
+    this.backHandler = handler;
+    try {
+      await this.request("app.setBackHandler", { enabled: true }, options);
+    } catch (error) {
+      if (this.backHandler === handler) this.backHandler = previous;
+      throw error;
+    }
+  }
+
+  private clearBackHandler(options?: RequestOptions): Promise<void> {
+    this.backHandler = undefined;
+    this.activeBackRequest?.abort();
+    return this.request("app.setBackHandler", { enabled: false }, options);
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.backHandler = undefined;
+    this.activeBackRequest?.abort();
     this.port.removeEventListener("message", this.handleMessage);
     this.port.removeEventListener("messageerror", this.handleMessageError);
     this.port.close();
@@ -306,6 +333,7 @@ export class HirayaClient {
       }
       if (isMessageType(message.data, "event")) {
         const event = parseRpcEvent(message.data);
+        if (event.event === "app.backRequested") void this.handleBackRequest((event.payload as ServiceEvents["app.backRequested"]).requestId);
         if (event.event === "theme.changed") this.applyTheme(event.payload as ThemeTokens);
         for (const listener of this.subscriptions.get(event.event) ?? []) listener(event.payload as never);
       }
@@ -318,6 +346,32 @@ export class HirayaClient {
   private readonly handleMessageError = () => {
     this.close();
   };
+
+  private async handleBackRequest(requestId: string): Promise<void> {
+    const handler = this.backHandler;
+    if (!handler || this.activeBackRequest) {
+      try { await this.request("app.resolveBackRequest", { requestId, result: "failed" }); } catch { /* The host may have closed while resolving. */ }
+      return;
+    }
+
+    const controller = new AbortController();
+    this.activeBackRequest = controller;
+    try {
+      let result: AppBackResult;
+      try {
+        result = await handler(controller.signal);
+        if (controller.signal.aborted || result !== "handled" && result !== "home") throw new TypeError("Back handler returned an invalid result.");
+      } catch {
+        if (!this.closed) {
+          try { await this.request("app.resolveBackRequest", { requestId, result: "failed" }); } catch { /* The host may have closed while resolving. */ }
+        }
+        return;
+      }
+      try { await this.request("app.resolveBackRequest", { requestId, result }); } catch { /* The host may have closed while resolving. */ }
+    } finally {
+      if (this.activeBackRequest === controller) this.activeBackRequest = undefined;
+    }
+  }
 
   private applyResponseTheme(method: ServiceMethod, result: unknown): void {
     if (method === "app.getLaunchContext") this.applyTheme((result as ServiceMethods["app.getLaunchContext"]["result"]).theme);

@@ -131,6 +131,13 @@ describe("apps contracts", () => {
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r4", method: "files.resolve", params: { handle: "file_0123456789abcdef", path: "/secret" } })).toThrow("relative path");
     expect(parseRpcRequest({ protocolVersion: 1, type: "request", id: "r7", method: "files.deleteMany", params: { handles: ["file_0123456789abcdef", "folder_0123456789abcdef"], recursive: true } })).toEqual(expect.objectContaining({ params: { handles: ["file_0123456789abcdef", "folder_0123456789abcdef"], recursive: true } }));
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r8", method: "files.deleteMany", params: { handles: ["file_0123456789abcdef", "file_0123456789abcdef"] } })).toThrow("duplicates");
+    expect(parseRpcRequest({ protocolVersion: 1, type: "request", id: "back-1", method: "app.setBackHandler", params: { enabled: true } })).toEqual(expect.objectContaining({ params: { enabled: true } }));
+    expect(parseRpcRequest({ protocolVersion: 1, type: "request", id: "back-2", method: "app.resolveBackRequest", params: { requestId: "request-1", result: "home" } })).toEqual(expect.objectContaining({ params: { requestId: "request-1", result: "home" } }));
+    expect(parseServiceResult("app.resolveBackRequest", undefined)).toBeUndefined();
+    expect(parseRpcEvent({ protocolVersion: 1, type: "event", event: "app.backRequested", payload: { requestId: "request-1" } })).toEqual(expect.objectContaining({ payload: { requestId: "request-1" } }));
+    expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "back-3", method: "app.setBackHandler", params: { enabled: 1 } })).toThrow("state");
+    expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "back-4", method: "app.resolveBackRequest", params: { requestId: "request-1", result: "close" } })).toThrow("result");
+    expect(() => parseRpcEvent({ protocolVersion: 1, type: "event", event: "app.backRequested", payload: { requestId: "request-1", extra: true } })).toThrow("unsupported shape");
   });
 
   test("strictly validates the theme editor protocol", () => {
