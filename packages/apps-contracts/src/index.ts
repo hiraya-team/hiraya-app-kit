@@ -6,6 +6,7 @@ export const APPS_PROTOCOL_VERSION = 1 as const;
 export const APP_CATALOG_SCHEMA_VERSION = 1 as const;
 export const MAX_FILE_CHUNK_BYTES = 1024 * 1024;
 export const MAX_APP_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_WALLPAPER_IMAGE_BYTES = 20 * 1024 * 1024;
 
 const APP_ID = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$/;
 const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -236,6 +237,30 @@ export interface ThemeEditorState {
   restrictionReason: string;
 }
 
+export interface WallpaperEditorWallpaper {
+  source: string;
+  fit: "cover" | "contain";
+  positionX: number;
+  positionY: number;
+  blur: number;
+  dim: number;
+  overlayColor: string;
+  overlayOpacity: number;
+}
+
+export interface WallpaperEditorImage {
+  id: string;
+  name: string;
+}
+
+export interface WallpaperEditorState {
+  wallpaper: WallpaperEditorWallpaper;
+  images: WallpaperEditorImage[];
+  currentName: string;
+  canManage: boolean;
+  restrictionReason: string;
+}
+
 export interface ServiceMethods {
   "app.getLaunchContext": { params: Record<string, never>; result: LaunchContext };
   "app.getCapabilities": { params: Record<string, never>; result: AppCapabilities };
@@ -282,6 +307,12 @@ export interface ServiceMethods {
   "themes.select": { params: { themeId: string }; result: ThemeEditorState };
   "themes.save": { params: { id: string; name: string; definition: ThemeDefinition }; result: ThemeEditorState };
   "themes.delete": { params: { themeId: string }; result: ThemeEditorState };
+  "wallpapers.getState": { params: Record<string, never>; result: WallpaperEditorState };
+  "wallpapers.preview": { params: { wallpaper: WallpaperEditorWallpaper }; result: void };
+  "wallpapers.save": { params: { wallpaper: WallpaperEditorWallpaper }; result: WallpaperEditorState };
+  "wallpapers.upload": { params: { name: string; mimeType: string; data: ArrayBuffer }; result: WallpaperEditorState };
+  "wallpapers.select": { params: { fileId: string }; result: WallpaperEditorState };
+  "wallpapers.readCurrentImage": { params: Record<string, never>; result: { data: ArrayBuffer; mimeType: string } | null };
   "storage.get": { params: { key: string }; result: JsonValue | undefined };
   "storage.set": { params: { key: string; value: JsonValue }; result: void };
   "storage.remove": { params: { key: string }; result: void };
@@ -298,6 +329,7 @@ export interface ServiceEvents {
   "notifications.clicked": { id: string };
   "theme.changed": ThemeTokens;
   "themes.changed": ThemeEditorState;
+  "wallpapers.changed": WallpaperEditorState;
 }
 
 export type ServiceEvent = keyof ServiceEvents;
@@ -311,9 +343,10 @@ const serviceMethodSet = new Set<string>([
   "dialogs.openFile", "dialogs.openFolder", "dialogs.saveFile", "dialogs.confirm",
   "window.getState", "window.setTitle", "window.setDirty", "window.setSize", "window.setFullscreen", "window.close",
   "commands.set", "commands.clear", "notifications.show", "notifications.dismiss", "theme.get", "themes.getState", "themes.select", "themes.save", "themes.delete",
+  "wallpapers.getState", "wallpapers.preview", "wallpapers.save", "wallpapers.upload", "wallpapers.select", "wallpapers.readCurrentImage",
   "storage.get", "storage.set", "storage.remove", "storage.clear",
 ]);
-const serviceEventSet = new Set<string>(["files.changed", "window.stateChanged", "commands.invoked", "notifications.clicked", "theme.changed", "themes.changed", "capabilities.changed"]);
+const serviceEventSet = new Set<string>(["files.changed", "window.stateChanged", "commands.invoked", "notifications.clicked", "theme.changed", "themes.changed", "wallpapers.changed", "capabilities.changed"]);
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError(`${label} must be an object.`);
@@ -575,12 +608,48 @@ export function parseThemeEditorState(value: unknown): ThemeEditorState {
   return { selectedThemeId, themes, canManage: boolean(state.canManage, "Theme management capability"), restrictionReason: state.restrictionReason === "" ? "" : text(state.restrictionReason, "Theme restriction reason", 500) };
 }
 
+export function parseWallpaperEditorWallpaper(value: unknown): WallpaperEditorWallpaper {
+  const wallpaper = record(value, "Wallpaper editor wallpaper");
+  exact(wallpaper, ["source", "fit", "positionX", "positionY", "blur", "dim", "overlayColor", "overlayOpacity"], [], "Wallpaper editor wallpaper");
+  if (wallpaper.fit !== "cover" && wallpaper.fit !== "contain") throw new TypeError("Wallpaper fit is invalid.");
+  if (typeof wallpaper.overlayColor !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(wallpaper.overlayColor)) throw new TypeError("Wallpaper overlay color is invalid.");
+  return {
+    source: text(wallpaper.source, "Wallpaper source", 8192),
+    fit: wallpaper.fit,
+    positionX: number(wallpaper.positionX, "Wallpaper horizontal position", { min: 0, max: 100 }),
+    positionY: number(wallpaper.positionY, "Wallpaper vertical position", { min: 0, max: 100 }),
+    blur: number(wallpaper.blur, "Wallpaper blur", { min: 0, max: 24 }),
+    dim: number(wallpaper.dim, "Wallpaper dim", { min: 0, max: 0.8 }),
+    overlayColor: wallpaper.overlayColor.toUpperCase(),
+    overlayOpacity: number(wallpaper.overlayOpacity, "Wallpaper overlay opacity", { min: 0, max: 0.8 }),
+  };
+}
+
+export function parseWallpaperEditorState(value: unknown): WallpaperEditorState {
+  const state = record(value, "Wallpaper editor state");
+  exact(state, ["wallpaper", "images", "currentName", "canManage", "restrictionReason"], [], "Wallpaper editor state");
+  if (!Array.isArray(state.images) || state.images.length > 10_000) throw new TypeError("Wallpaper editor images are invalid.");
+  const images = state.images.map((value) => {
+    const image = record(value, "Wallpaper editor image");
+    exact(image, ["id", "name"], [], "Wallpaper editor image");
+    return { id: text(image.id, "Wallpaper image ID", 256), name: text(image.name, "Wallpaper image name", 255) };
+  });
+  if (new Set(images.map(({ id }) => id)).size !== images.length) throw new TypeError("Wallpaper editor image IDs contain duplicates.");
+  return {
+    wallpaper: parseWallpaperEditorWallpaper(state.wallpaper),
+    images,
+    currentName: text(state.currentName, "Current wallpaper name", 255),
+    canManage: boolean(state.canManage, "Wallpaper management capability"),
+    restrictionReason: state.restrictionReason === "" ? "" : text(state.restrictionReason, "Wallpaper restriction reason", 500),
+  };
+}
+
 export function parseServiceParams<M extends ServiceMethod>(method: M, value: unknown): ServiceMethods[M]["params"] {
   const params = record(value, `${method} params`);
   const shape = (required: readonly string[], optional: readonly string[] = []) => exact(params, required, optional, `${method} params`);
   let result: unknown;
   switch (method) {
-    case "app.getLaunchContext": case "app.getCapabilities": case "dialogs.openFolder": case "window.getState": case "window.close": case "commands.clear": case "themes.getState": case "storage.clear": result = empty(params, `${method} params`); break;
+    case "app.getLaunchContext": case "app.getCapabilities": case "dialogs.openFolder": case "window.getState": case "window.close": case "commands.clear": case "themes.getState": case "wallpapers.getState": case "wallpapers.readCurrentImage": case "storage.clear": result = empty(params, `${method} params`); break;
     case "files.stat": case "files.read": shape(["handle"]); result = { handle: method === "files.read" ? parseFileHandle(params.handle) : handle(params.handle) }; break;
     case "files.readChunk": shape(["handle", "offset", "length"]); result = { handle: parseFileHandle(params.handle), offset: number(params.offset, "File chunk offset", { integer: true, min: 0, max: MAX_APP_FILE_BYTES }), length: number(params.length, "File chunk length", { integer: true, min: 1, max: MAX_FILE_CHUNK_BYTES }) }; break;
     case "files.write": shape(["handle", "data"], ["mimeType", "expectedRevision"]); result = { handle: parseFileHandle(params.handle), data: arrayBuffer(params.data, "File data"), ...(params.mimeType === undefined ? {} : { mimeType: text(params.mimeType, "File MIME type", 255) }), ...(params.expectedRevision === undefined ? {} : { expectedRevision: number(params.expectedRevision, "Expected revision", { integer: true, min: 0 }) }) }; break;
@@ -614,6 +683,9 @@ export function parseServiceParams<M extends ServiceMethod>(method: M, value: un
     case "theme.get": result = empty(params, "theme.get params"); break;
     case "themes.select": case "themes.delete": shape(["themeId"]); result = { themeId: text(params.themeId, "Theme ID", 180) }; break;
     case "themes.save": shape(["id", "name", "definition"]); result = parseCustomTheme(params); break;
+    case "wallpapers.preview": case "wallpapers.save": shape(["wallpaper"]); result = { wallpaper: parseWallpaperEditorWallpaper(params.wallpaper) }; break;
+    case "wallpapers.upload": shape(["name", "mimeType", "data"]); { const data = arrayBuffer(params.data, "Wallpaper image data"); if (data.byteLength > MAX_WALLPAPER_IMAGE_BYTES) throw new TypeError("Wallpaper image data exceeds the upload limit."); if (params.mimeType !== "image/jpeg" && params.mimeType !== "image/png" && params.mimeType !== "image/webp") throw new TypeError("Wallpaper image MIME type is invalid."); result = { name: text(params.name, "Wallpaper image name", 255), mimeType: params.mimeType, data }; } break;
+    case "wallpapers.select": shape(["fileId"]); result = { fileId: text(params.fileId, "Wallpaper file ID", 256) }; break;
     case "storage.get": case "storage.remove": shape(["key"]); result = { key: text(params.key, "Storage key", 128) }; break;
     case "storage.set": shape(["key", "value"]); result = { key: text(params.key, "Storage key", 128), value: parseJsonValue(params.value) }; break;
     default: throw new TypeError("RPC method is invalid.");
@@ -641,10 +713,12 @@ export function parseServiceResult<M extends ServiceMethod>(method: M, value: un
     case "notifications.show": { const item = record(value, "Notification result"); exact(item, ["id"], [], "Notification result"); result = { id: text(item.id, "Notification ID") }; break; }
     case "theme.get": result = parseThemeTokens(value); break;
     case "themes.getState": case "themes.select": case "themes.save": case "themes.delete": result = parseThemeEditorState(value); break;
+    case "wallpapers.getState": case "wallpapers.save": case "wallpapers.upload": case "wallpapers.select": result = parseWallpaperEditorState(value); break;
+    case "wallpapers.readCurrentImage": if (value === null) result = null; else { const image = record(value, "Current wallpaper image"); exact(image, ["data", "mimeType"], [], "Current wallpaper image"); const data = arrayBuffer(image.data, "Wallpaper image data"); if (data.byteLength > MAX_WALLPAPER_IMAGE_BYTES) throw new TypeError("Wallpaper image data exceeds the upload limit."); if (image.mimeType !== "image/jpeg" && image.mimeType !== "image/png" && image.mimeType !== "image/webp") throw new TypeError("Wallpaper image MIME type is invalid."); result = { data, mimeType: image.mimeType }; } break;
     case "storage.get": result = value === undefined ? undefined : parseJsonValue(value); break;
     case "host.getEntryStatus": if (!Array.isArray(value) || value.length > 256) throw new TypeError("Host entry statuses are invalid."); result = value.map(parseHostEntryStatus); break;
     case "host.getFilePreviewSource": { const source = record(value, "File preview source"); if (source.kind === "blob") { exact(source, ["kind", "blob"], [], "File preview source"); if (!(source.blob instanceof Blob) || source.blob.size > MAX_APP_FILE_BYTES) throw new TypeError("File preview Blob is invalid."); result = { kind: "blob", blob: source.blob }; } else if (source.kind === "url") { exact(source, ["kind", "url", "expiresAt"], [], "File preview source"); let url: URL; try { url = new URL(text(source.url, "File preview URL", 8192)); } catch { throw new TypeError("File preview URL is invalid."); } const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]"; if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback) || url.username || url.password || url.hash) throw new TypeError("File preview URL is invalid."); result = { kind: "url", url: url.href, expiresAt: number(source.expiresAt, "File preview expiration", { integer: true, min: 0 }) }; } else throw new TypeError("File preview source kind is invalid."); break; }
-    case "files.writeChunk": case "files.abortWrite": case "files.delete": case "files.deleteMany": case "host.openEntry": case "host.importFiles": case "host.importFolder": case "host.showEntryActions": case "host.setOfflinePinned": case "host.setExternalEmbeddedPreviews": case "window.setTitle": case "window.setDirty": case "window.close": case "commands.set": case "commands.clear": case "notifications.dismiss": case "storage.set": case "storage.remove": case "storage.clear": if (value !== undefined) throw new TypeError(`${method} result must be undefined.`); result = undefined; break;
+    case "files.writeChunk": case "files.abortWrite": case "files.delete": case "files.deleteMany": case "host.openEntry": case "host.importFiles": case "host.importFolder": case "host.showEntryActions": case "host.setOfflinePinned": case "host.setExternalEmbeddedPreviews": case "window.setTitle": case "window.setDirty": case "window.close": case "commands.set": case "commands.clear": case "notifications.dismiss": case "wallpapers.preview": case "storage.set": case "storage.remove": case "storage.clear": if (value !== undefined) throw new TypeError(`${method} result must be undefined.`); result = undefined; break;
     default: throw new TypeError("RPC method is invalid.");
   }
   return result as ServiceMethods[M]["result"];
@@ -669,6 +743,7 @@ export function parseServiceEventPayload<E extends ServiceEvent>(event: E, value
   if (event === "window.stateChanged") return parseWindowState(value) as ServiceEvents[E];
   if (event === "theme.changed") return parseThemeTokens(value) as ServiceEvents[E];
   if (event === "themes.changed") return parseThemeEditorState(value) as ServiceEvents[E];
+  if (event === "wallpapers.changed") return parseWallpaperEditorState(value) as ServiceEvents[E];
   const payload = record(value, `${event} payload`);
   if (event === "files.changed") { exact(payload, ["handles"], [], `${event} payload`); if (!Array.isArray(payload.handles) || payload.handles.length > 10_000) throw new TypeError("Changed handles are invalid."); return { handles: payload.handles.map(handle) } as ServiceEvents[E]; }
   exact(payload, ["id"], [], `${event} payload`);
