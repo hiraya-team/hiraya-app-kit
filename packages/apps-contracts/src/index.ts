@@ -1,3 +1,7 @@
+import { parseCustomTheme, parseThemeDefinition, type ThemeDefinition } from "./theme";
+
+export type { ThemeDefinition } from "./theme";
+
 export const APPS_PROTOCOL_VERSION = 1 as const;
 export const APP_CATALOG_SCHEMA_VERSION = 1 as const;
 export const MAX_FILE_CHUNK_BYTES = 1024 * 1024;
@@ -16,6 +20,7 @@ export const APP_PERMISSIONS = [
   "commands",
   "notifications",
   "theme",
+  "themes:manage",
   "storage",
 ] as const;
 
@@ -215,6 +220,22 @@ export interface CommandDefinition {
   enabled?: boolean;
 }
 
+export interface ThemeEditorTheme {
+  id: string;
+  name: string;
+  definition: ThemeDefinition;
+  builtIn: boolean;
+  description?: string;
+  hasWallpaper: boolean;
+}
+
+export interface ThemeEditorState {
+  selectedThemeId: string;
+  themes: ThemeEditorTheme[];
+  canManage: boolean;
+  restrictionReason: string;
+}
+
 export interface ServiceMethods {
   "app.getLaunchContext": { params: Record<string, never>; result: LaunchContext };
   "app.getCapabilities": { params: Record<string, never>; result: AppCapabilities };
@@ -257,6 +278,10 @@ export interface ServiceMethods {
   "notifications.show": { params: { title: string; body?: string; tag?: string }; result: { id: string } };
   "notifications.dismiss": { params: { id: string }; result: void };
   "theme.get": { params: Record<string, never>; result: ThemeTokens };
+  "themes.getState": { params: Record<string, never>; result: ThemeEditorState };
+  "themes.select": { params: { themeId: string }; result: ThemeEditorState };
+  "themes.save": { params: { id: string; name: string; definition: ThemeDefinition }; result: ThemeEditorState };
+  "themes.delete": { params: { themeId: string }; result: ThemeEditorState };
   "storage.get": { params: { key: string }; result: JsonValue | undefined };
   "storage.set": { params: { key: string; value: JsonValue }; result: void };
   "storage.remove": { params: { key: string }; result: void };
@@ -272,6 +297,7 @@ export interface ServiceEvents {
   "commands.invoked": { id: string };
   "notifications.clicked": { id: string };
   "theme.changed": ThemeTokens;
+  "themes.changed": ThemeEditorState;
 }
 
 export type ServiceEvent = keyof ServiceEvents;
@@ -284,10 +310,10 @@ const serviceMethodSet = new Set<string>([
   "host.openEntry", "host.importFiles", "host.importFolder", "host.showEntryActions", "host.getEntryStatus", "host.getFilePreviewSource", "host.setOfflinePinned", "host.setExternalEmbeddedPreviews",
   "dialogs.openFile", "dialogs.openFolder", "dialogs.saveFile", "dialogs.confirm",
   "window.getState", "window.setTitle", "window.setDirty", "window.setSize", "window.setFullscreen", "window.close",
-  "commands.set", "commands.clear", "notifications.show", "notifications.dismiss", "theme.get",
+  "commands.set", "commands.clear", "notifications.show", "notifications.dismiss", "theme.get", "themes.getState", "themes.select", "themes.save", "themes.delete",
   "storage.get", "storage.set", "storage.remove", "storage.clear",
 ]);
-const serviceEventSet = new Set<string>(["files.changed", "window.stateChanged", "commands.invoked", "notifications.clicked", "theme.changed", "capabilities.changed"]);
+const serviceEventSet = new Set<string>(["files.changed", "window.stateChanged", "commands.invoked", "notifications.clicked", "theme.changed", "themes.changed", "capabilities.changed"]);
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError(`${label} must be an object.`);
@@ -530,12 +556,31 @@ function nullableFolder(value: unknown): FolderHandle | null {
   return value === null ? null : parseFolderHandle(value);
 }
 
+export function parseThemeEditorState(value: unknown): ThemeEditorState {
+  const state = record(value, "Theme editor state");
+  exact(state, ["selectedThemeId", "themes", "canManage", "restrictionReason"], [], "Theme editor state");
+  if (!Array.isArray(state.themes) || state.themes.length > 28) throw new TypeError("Theme editor themes are invalid.");
+  const themes = state.themes.map((value) => {
+    const item = record(value, "Theme editor theme");
+    exact(item, ["id", "name", "definition", "builtIn", "hasWallpaper"], ["description"], "Theme editor theme");
+    const builtIn = boolean(item.builtIn, "Theme built-in state");
+    const parsed = builtIn
+      ? { id: text(item.id, "Theme ID", 180), name: text(item.name, "Theme name", 60), definition: parseThemeDefinition(item.definition) }
+      : parseCustomTheme({ id: item.id, name: item.name, definition: item.definition });
+    return { ...parsed, builtIn, ...(item.description === undefined ? {} : { description: text(item.description, "Theme description", 500) }), hasWallpaper: boolean(item.hasWallpaper, "Theme wallpaper state") };
+  });
+  if (new Set(themes.map(({ id }) => id)).size !== themes.length) throw new TypeError("Theme editor theme IDs contain duplicates.");
+  const selectedThemeId = text(state.selectedThemeId, "Selected theme ID", 180);
+  if (!themes.some(({ id }) => id === selectedThemeId)) throw new TypeError("Selected theme ID is unavailable.");
+  return { selectedThemeId, themes, canManage: boolean(state.canManage, "Theme management capability"), restrictionReason: state.restrictionReason === "" ? "" : text(state.restrictionReason, "Theme restriction reason", 500) };
+}
+
 export function parseServiceParams<M extends ServiceMethod>(method: M, value: unknown): ServiceMethods[M]["params"] {
   const params = record(value, `${method} params`);
   const shape = (required: readonly string[], optional: readonly string[] = []) => exact(params, required, optional, `${method} params`);
   let result: unknown;
   switch (method) {
-    case "app.getLaunchContext": case "app.getCapabilities": case "dialogs.openFolder": case "window.getState": case "window.close": case "commands.clear": case "storage.clear": result = empty(params, `${method} params`); break;
+    case "app.getLaunchContext": case "app.getCapabilities": case "dialogs.openFolder": case "window.getState": case "window.close": case "commands.clear": case "themes.getState": case "storage.clear": result = empty(params, `${method} params`); break;
     case "files.stat": case "files.read": shape(["handle"]); result = { handle: method === "files.read" ? parseFileHandle(params.handle) : handle(params.handle) }; break;
     case "files.readChunk": shape(["handle", "offset", "length"]); result = { handle: parseFileHandle(params.handle), offset: number(params.offset, "File chunk offset", { integer: true, min: 0, max: MAX_APP_FILE_BYTES }), length: number(params.length, "File chunk length", { integer: true, min: 1, max: MAX_FILE_CHUNK_BYTES }) }; break;
     case "files.write": shape(["handle", "data"], ["mimeType", "expectedRevision"]); result = { handle: parseFileHandle(params.handle), data: arrayBuffer(params.data, "File data"), ...(params.mimeType === undefined ? {} : { mimeType: text(params.mimeType, "File MIME type", 255) }), ...(params.expectedRevision === undefined ? {} : { expectedRevision: number(params.expectedRevision, "Expected revision", { integer: true, min: 0 }) }) }; break;
@@ -567,6 +612,8 @@ export function parseServiceParams<M extends ServiceMethod>(method: M, value: un
     case "notifications.show": shape(["title"], ["body", "tag"]); result = { title: text(params.title, "Notification title", 120), ...(params.body === undefined ? {} : { body: optionalText(params.body, "Notification body", 1_000) }), ...(params.tag === undefined ? {} : { tag: text(params.tag, "Notification tag", 128) }) }; break;
     case "notifications.dismiss": shape(["id"]); result = { id: text(params.id, "Notification ID") }; break;
     case "theme.get": result = empty(params, "theme.get params"); break;
+    case "themes.select": case "themes.delete": shape(["themeId"]); result = { themeId: text(params.themeId, "Theme ID", 180) }; break;
+    case "themes.save": shape(["id", "name", "definition"]); result = parseCustomTheme(params); break;
     case "storage.get": case "storage.remove": shape(["key"]); result = { key: text(params.key, "Storage key", 128) }; break;
     case "storage.set": shape(["key", "value"]); result = { key: text(params.key, "Storage key", 128), value: parseJsonValue(params.value) }; break;
     default: throw new TypeError("RPC method is invalid.");
@@ -593,6 +640,7 @@ export function parseServiceResult<M extends ServiceMethod>(method: M, value: un
     case "window.getState": case "window.setSize": case "window.setFullscreen": result = parseWindowState(value); break;
     case "notifications.show": { const item = record(value, "Notification result"); exact(item, ["id"], [], "Notification result"); result = { id: text(item.id, "Notification ID") }; break; }
     case "theme.get": result = parseThemeTokens(value); break;
+    case "themes.getState": case "themes.select": case "themes.save": case "themes.delete": result = parseThemeEditorState(value); break;
     case "storage.get": result = value === undefined ? undefined : parseJsonValue(value); break;
     case "host.getEntryStatus": if (!Array.isArray(value) || value.length > 256) throw new TypeError("Host entry statuses are invalid."); result = value.map(parseHostEntryStatus); break;
     case "host.getFilePreviewSource": { const source = record(value, "File preview source"); if (source.kind === "blob") { exact(source, ["kind", "blob"], [], "File preview source"); if (!(source.blob instanceof Blob) || source.blob.size > MAX_APP_FILE_BYTES) throw new TypeError("File preview Blob is invalid."); result = { kind: "blob", blob: source.blob }; } else if (source.kind === "url") { exact(source, ["kind", "url", "expiresAt"], [], "File preview source"); let url: URL; try { url = new URL(text(source.url, "File preview URL", 8192)); } catch { throw new TypeError("File preview URL is invalid."); } const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]"; if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback) || url.username || url.password || url.hash) throw new TypeError("File preview URL is invalid."); result = { kind: "url", url: url.href, expiresAt: number(source.expiresAt, "File preview expiration", { integer: true, min: 0 }) }; } else throw new TypeError("File preview source kind is invalid."); break; }
@@ -620,6 +668,7 @@ export function parseServiceEventPayload<E extends ServiceEvent>(event: E, value
   if (event === "capabilities.changed") return parseAppCapabilities(value) as ServiceEvents[E];
   if (event === "window.stateChanged") return parseWindowState(value) as ServiceEvents[E];
   if (event === "theme.changed") return parseThemeTokens(value) as ServiceEvents[E];
+  if (event === "themes.changed") return parseThemeEditorState(value) as ServiceEvents[E];
   const payload = record(value, `${event} payload`);
   if (event === "files.changed") { exact(payload, ["handles"], [], `${event} payload`); if (!Array.isArray(payload.handles) || payload.handles.length > 10_000) throw new TypeError("Changed handles are invalid."); return { handles: payload.handles.map(handle) } as ServiceEvents[E]; }
   exact(payload, ["id"], [], `${event} payload`);

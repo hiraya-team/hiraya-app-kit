@@ -158,6 +158,13 @@ export class HirayaClient {
     get: (options?: RequestOptions) => this.request("theme.get", {}, options),
   };
 
+  readonly themes = {
+    getState: (options?: RequestOptions) => this.request("themes.getState", {}, options),
+    select: (themeId: string, options?: RequestOptions) => this.request("themes.select", { themeId }, options),
+    save: (params: ServiceMethods["themes.save"]["params"], options?: RequestOptions) => this.request("themes.save", params, options),
+    delete: (themeId: string, options?: RequestOptions) => this.request("themes.delete", { themeId }, options),
+  };
+
   readonly storage = {
     get: (key: string, options?: RequestOptions) => this.request("storage.get", { key }, options),
     set: (key: string, value: JsonValue, options?: RequestOptions) => this.request("storage.set", { key, value }, options),

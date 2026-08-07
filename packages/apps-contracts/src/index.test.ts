@@ -8,6 +8,7 @@ import {
   parseRpcRequest,
   parseRpcResponse,
   parseServiceResult,
+  parseThemeEditorState,
   parseThemeTokens,
 } from "./index";
 
@@ -25,6 +26,17 @@ const theme = {
   focus: "#f1bd69",
 } as const;
 
+const editorDefinition = {
+  colors: {
+    shell: "#000000", chrome: "#000000", chromeText: "#000000", window: "#000000", windowMuted: "#000000",
+    text: "#000000", textMuted: "#000000", accent: "#000000", accentText: "#000000", border: "#000000",
+    danger: "#000000", dangerSurface: "#000000", desktopText: "#000000", selection: "#000000", editorBackground: "#000000",
+    editorText: "#000000", editorGutter: "#000000", editorKeyword: "#000000", editorString: "#000000", editorComment: "#000000",
+  },
+  shape: { radius: 0, borderWidth: 0 }, effects: { blur: 0, opacity: 1, shadow: 0 },
+  typography: { family: "system", scale: 1, weight: 400 }, density: 1, motion: 1, iconSize: 48,
+} as const;
+
 describe("apps contracts", () => {
   test("strictly parses manifest v2 for UI runtime 1", () => {
     const manifest = {
@@ -34,7 +46,7 @@ describe("apps contracts", () => {
       name: "Notes",
       version: "1.2.0",
       entrypoint: "dist/index.html",
-      permissions: ["files:read", "storage"],
+      permissions: ["files:read", "themes:manage", "storage"],
     };
     expect(parseManifestV2(manifest)).toEqual(manifest);
     expect(() => parseManifestV2({ ...manifest, schemaVersion: 1 })).toThrow("schema version");
@@ -118,5 +130,17 @@ describe("apps contracts", () => {
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r4", method: "files.resolve", params: { handle: "file_0123456789abcdef", path: "/secret" } })).toThrow("relative path");
     expect(parseRpcRequest({ protocolVersion: 1, type: "request", id: "r7", method: "files.deleteMany", params: { handles: ["file_0123456789abcdef", "folder_0123456789abcdef"], recursive: true } })).toEqual(expect.objectContaining({ params: { handles: ["file_0123456789abcdef", "folder_0123456789abcdef"], recursive: true } }));
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r8", method: "files.deleteMany", params: { handles: ["file_0123456789abcdef", "file_0123456789abcdef"] } })).toThrow("duplicates");
+  });
+
+  test("strictly validates the theme editor protocol", () => {
+    const editorTheme = { id: "hiraya-dusk", name: "Hiraya Dusk", definition: editorDefinition, builtIn: true, description: "Default", hasWallpaper: true };
+    const state = { selectedThemeId: editorTheme.id, themes: [editorTheme], canManage: true, restrictionReason: "" };
+    expect(parseThemeEditorState(state)).toEqual(state);
+    expect(parseServiceResult("themes.getState", state)).toEqual(state);
+    expect(parseRpcRequest({ protocolVersion: 1, type: "request", id: "themes", method: "themes.select", params: { themeId: editorTheme.id } })).toEqual(expect.objectContaining({ params: { themeId: editorTheme.id } }));
+    expect(parseRpcEvent({ protocolVersion: 1, type: "event", event: "themes.changed", payload: state })).toEqual(expect.objectContaining({ payload: state }));
+    expect(() => parseThemeEditorState({ ...state, extra: true })).toThrow("unsupported shape");
+    expect(() => parseThemeEditorState({ ...state, themes: Array.from({ length: 29 }, (_, index) => ({ ...editorTheme, id: `built-in-${index}` })) })).toThrow("invalid");
+    expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "themes", method: "themes.save", params: { id: "custom", name: "Custom", definition: editorDefinition, extra: true } })).toThrow("unsupported shape");
   });
 });
