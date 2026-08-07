@@ -107,6 +107,9 @@ export interface AppCapabilities {
   externalEmbeddedPreviews: boolean;
 }
 
+export type AppBackResult = "handled" | "home";
+export type AppBackRequestResult = AppBackResult | "failed";
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -258,6 +261,8 @@ export interface WallpaperEditorState {
 export interface ServiceMethods {
   "app.getLaunchContext": { params: Record<string, never>; result: LaunchContext };
   "app.getCapabilities": { params: Record<string, never>; result: AppCapabilities };
+  "app.setBackHandler": { params: { enabled: boolean }; result: void };
+  "app.resolveBackRequest": { params: { requestId: string; result: AppBackRequestResult }; result: void };
   "files.stat": { params: { handle: FileHandle | FolderHandle }; result: DirectoryEntry };
   "files.read": { params: { handle: FileHandle }; result: { data: ArrayBuffer; mimeType: string } };
   "files.readChunk": { params: { handle: FileHandle; offset: number; length: number }; result: { data: ArrayBuffer; mimeType: string; size: number; contentRevision: number } };
@@ -316,6 +321,7 @@ export interface ServiceMethods {
 export type ServiceMethod = keyof ServiceMethods;
 
 export interface ServiceEvents {
+  "app.backRequested": { requestId: string };
   "capabilities.changed": AppCapabilities;
   "files.changed": { handles: (FileHandle | FolderHandle)[] };
   "window.stateChanged": WindowState;
@@ -331,7 +337,7 @@ export type ServiceEvent = keyof ServiceEvents;
 const permissionSet = new Set<string>(APP_PERMISSIONS);
 const errorCodeSet = new Set<string>(HIRAYA_ERROR_CODES);
 const serviceMethodSet = new Set<string>([
-  "app.getLaunchContext", "app.getCapabilities",
+  "app.getLaunchContext", "app.getCapabilities", "app.setBackHandler", "app.resolveBackRequest",
   "files.stat", "files.read", "files.readChunk", "files.write", "files.beginWrite", "files.writeChunk", "files.commitWrite", "files.abortWrite", "files.resolve", "files.list", "files.createFile", "files.createFolder", "files.rename", "files.move", "files.delete", "files.deleteMany",
   "host.openEntry", "host.importFiles", "host.importFolder", "host.showEntryActions", "host.getEntryStatus", "host.getFilePreviewSource", "host.setOfflinePinned", "host.setExternalEmbeddedPreviews",
   "dialogs.openFile", "dialogs.openFolder", "dialogs.saveFile", "dialogs.confirm",
@@ -340,7 +346,7 @@ const serviceMethodSet = new Set<string>([
   "wallpapers.getState", "wallpapers.preview", "wallpapers.save", "wallpapers.upload", "wallpapers.select", "wallpapers.readCurrentImage",
   "storage.get", "storage.set", "storage.remove", "storage.clear",
 ]);
-const serviceEventSet = new Set<string>(["files.changed", "window.stateChanged", "commands.invoked", "notifications.clicked", "theme.changed", "themes.changed", "wallpapers.changed", "capabilities.changed"]);
+const serviceEventSet = new Set<string>(["app.backRequested", "files.changed", "window.stateChanged", "commands.invoked", "notifications.clicked", "theme.changed", "themes.changed", "wallpapers.changed", "capabilities.changed"]);
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError(`${label} must be an object.`);
@@ -636,6 +642,8 @@ export function parseServiceParams<M extends ServiceMethod>(method: M, value: un
   let result: unknown;
   switch (method) {
     case "app.getLaunchContext": case "app.getCapabilities": case "dialogs.openFolder": case "window.getState": case "window.close": case "commands.clear": case "themes.getState": case "wallpapers.getState": case "wallpapers.readCurrentImage": case "storage.clear": result = empty(params, `${method} params`); break;
+    case "app.setBackHandler": shape(["enabled"]); result = { enabled: boolean(params.enabled, "App back handler state") }; break;
+    case "app.resolveBackRequest": shape(["requestId", "result"]); if (params.result !== "handled" && params.result !== "home" && params.result !== "failed") throw new TypeError("App back request result is invalid."); result = { requestId: text(params.requestId, "App back request ID", 128), result: params.result }; break;
     case "files.stat": case "files.read": shape(["handle"]); result = { handle: method === "files.read" ? parseFileHandle(params.handle) : handle(params.handle) }; break;
     case "files.readChunk": shape(["handle", "offset", "length"]); result = { handle: parseFileHandle(params.handle), offset: number(params.offset, "File chunk offset", { integer: true, min: 0, max: MAX_APP_FILE_BYTES }), length: number(params.length, "File chunk length", { integer: true, min: 1, max: MAX_FILE_CHUNK_BYTES }) }; break;
     case "files.write": shape(["handle", "data"], ["mimeType", "expectedRevision"]); result = { handle: parseFileHandle(params.handle), data: arrayBuffer(params.data, "File data"), ...(params.mimeType === undefined ? {} : { mimeType: text(params.mimeType, "File MIME type", 255) }), ...(params.expectedRevision === undefined ? {} : { expectedRevision: number(params.expectedRevision, "Expected revision", { integer: true, min: 0 }) }) }; break;
@@ -704,7 +712,7 @@ export function parseServiceResult<M extends ServiceMethod>(method: M, value: un
     case "storage.get": result = value === undefined ? undefined : parseJsonValue(value); break;
     case "host.getEntryStatus": if (!Array.isArray(value) || value.length > 256) throw new TypeError("Host entry statuses are invalid."); result = value.map(parseHostEntryStatus); break;
     case "host.getFilePreviewSource": { const source = record(value, "File preview source"); if (source.kind === "blob") { exact(source, ["kind", "blob"], [], "File preview source"); if (!(source.blob instanceof Blob) || source.blob.size > MAX_APP_FILE_BYTES) throw new TypeError("File preview Blob is invalid."); result = { kind: "blob", blob: source.blob }; } else if (source.kind === "url") { exact(source, ["kind", "url", "expiresAt"], [], "File preview source"); let url: URL; try { url = new URL(text(source.url, "File preview URL", 8192)); } catch { throw new TypeError("File preview URL is invalid."); } const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]"; if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback) || url.username || url.password || url.hash) throw new TypeError("File preview URL is invalid."); result = { kind: "url", url: url.href, expiresAt: number(source.expiresAt, "File preview expiration", { integer: true, min: 0 }) }; } else throw new TypeError("File preview source kind is invalid."); break; }
-    case "files.writeChunk": case "files.abortWrite": case "files.delete": case "files.deleteMany": case "host.openEntry": case "host.importFiles": case "host.importFolder": case "host.showEntryActions": case "host.setOfflinePinned": case "host.setExternalEmbeddedPreviews": case "window.setTitle": case "window.setDirty": case "window.close": case "commands.set": case "commands.clear": case "notifications.dismiss": case "wallpapers.preview": case "storage.set": case "storage.remove": case "storage.clear": if (value !== undefined) throw new TypeError(`${method} result must be undefined.`); result = undefined; break;
+    case "app.setBackHandler": case "app.resolveBackRequest": case "files.writeChunk": case "files.abortWrite": case "files.delete": case "files.deleteMany": case "host.openEntry": case "host.importFiles": case "host.importFolder": case "host.showEntryActions": case "host.setOfflinePinned": case "host.setExternalEmbeddedPreviews": case "window.setTitle": case "window.setDirty": case "window.close": case "commands.set": case "commands.clear": case "notifications.dismiss": case "wallpapers.preview": case "storage.set": case "storage.remove": case "storage.clear": if (value !== undefined) throw new TypeError(`${method} result must be undefined.`); result = undefined; break;
     default: throw new TypeError("RPC method is invalid.");
   }
   return result as ServiceMethods[M]["result"];
@@ -731,6 +739,7 @@ export function parseServiceEventPayload<E extends ServiceEvent>(event: E, value
   if (event === "themes.changed") return parseThemeEditorState(value) as ServiceEvents[E];
   if (event === "wallpapers.changed") return parseWallpaperEditorState(value) as ServiceEvents[E];
   const payload = record(value, `${event} payload`);
+  if (event === "app.backRequested") { exact(payload, ["requestId"], [], `${event} payload`); return { requestId: text(payload.requestId, "App back request ID", 128) } as ServiceEvents[E]; }
   if (event === "files.changed") { exact(payload, ["handles"], [], `${event} payload`); if (!Array.isArray(payload.handles) || payload.handles.length > 10_000) throw new TypeError("Changed handles are invalid."); return { handles: payload.handles.map(handle) } as ServiceEvents[E]; }
   exact(payload, ["id"], [], `${event} payload`);
   return { id: text(payload.id, `${event} ID`, 128) } as ServiceEvents[E];

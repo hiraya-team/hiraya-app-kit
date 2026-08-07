@@ -256,6 +256,85 @@ describe("apps SDK", () => {
     channel.port2.close();
   });
 
+  test("resolves Back requests serially and reports handler failures", async () => {
+    const channel = new MessageChannel();
+    const resolutions: Array<{ requestId: string; result: string }> = [];
+    let changed!: () => void;
+    const resolutionChanged = () => new Promise<void>((resolve) => { changed = resolve; });
+    channel.port2.onmessage = ({ data }) => {
+      if (data.method === "app.resolveBackRequest") { resolutions.push(data.params); changed?.(); }
+      channel.port2.postMessage({ protocolVersion: 1, type: "response", id: data.id, ok: true, result: undefined });
+    };
+    const client = await connectHiraya({ port: channel.port1 });
+    let finish!: (result: "handled") => void;
+    let started!: () => void;
+    const handlerStarted = new Promise<void>((resolve) => { started = resolve; });
+    await client.app.setBackHandler((signal) => {
+      expect(signal).toBeInstanceOf(AbortSignal);
+      started();
+      return new Promise<"handled">((resolve) => { finish = resolve; });
+    });
+
+    channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "app.backRequested", payload: { requestId: "back-1" } });
+    await handlerStarted;
+    let updated = resolutionChanged();
+    channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "app.backRequested", payload: { requestId: "back-2" } });
+    await updated;
+    updated = resolutionChanged();
+    finish("handled");
+    await updated;
+    expect(resolutions).toEqual([
+      { requestId: "back-2", result: "failed" },
+      { requestId: "back-1", result: "handled" },
+    ]);
+
+    await client.app.setBackHandler(() => { throw new Error("broken"); });
+    updated = resolutionChanged();
+    channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "app.backRequested", payload: { requestId: "back-3" } });
+    await updated;
+    expect(resolutions.at(-1)).toEqual({ requestId: "back-3", result: "failed" });
+    client.close();
+    channel.port2.close();
+  });
+
+  test("aborts active Back work when the handler clears or the client closes", async () => {
+    const channel = new MessageChannel();
+    let failed!: () => void;
+    const failedResolution = new Promise<void>((resolve) => { failed = resolve; });
+    channel.port2.onmessage = ({ data }) => {
+      if (data.method === "app.resolveBackRequest" && data.params.result === "failed") failed();
+      channel.port2.postMessage({ protocolVersion: 1, type: "response", id: data.id, ok: true, result: undefined });
+    };
+    const client = await connectHiraya({ port: channel.port1 });
+    let firstSignal!: AbortSignal;
+    let firstStarted!: () => void;
+    const firstRequest = new Promise<void>((resolve) => { firstStarted = resolve; });
+    await client.app.setBackHandler((signal) => {
+      firstSignal = signal;
+      firstStarted();
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+    });
+    channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "app.backRequested", payload: { requestId: "back-clear" } });
+    await firstRequest;
+    await client.app.clearBackHandler();
+    expect(firstSignal.aborted).toBe(true);
+    await failedResolution;
+
+    let closeSignal!: AbortSignal;
+    let closeStarted!: () => void;
+    const closeRequest = new Promise<void>((resolve) => { closeStarted = resolve; });
+    await client.app.setBackHandler((signal) => {
+      closeSignal = signal;
+      closeStarted();
+      return new Promise(() => {});
+    });
+    channel.port2.postMessage({ protocolVersion: 1, type: "event", event: "app.backRequested", payload: { requestId: "back-close" } });
+    await closeRequest;
+    client.close();
+    expect(closeSignal.aborted).toBe(true);
+    channel.port2.close();
+  });
+
   test("keeps explicit deadlines local, supports abort, and rejects on close", async () => {
     const channel = new MessageChannel();
     const client = await connectHiraya({ port: channel.port1, requestTimeoutMs: 10 });

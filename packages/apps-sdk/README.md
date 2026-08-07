@@ -11,6 +11,8 @@ const launch = await hiraya.app.getLaunchContext();
 
 The manifest ID and connection ID must match. Apps communicate with Hiraya only through the negotiated message port. The client exposes `app`, `files`, `dialogs`, `window`, `commands`, `notifications`, `theme`, and app-local `storage` services plus typed host events through `hiraya.on(...)`.
 
+Packaged apps can take part in host Back navigation with `await hiraya.app.setBackHandler(handler)`. The handler receives an `AbortSignal` and returns `"handled"` after navigating within the app or `"home"` to let Hiraya leave the app. Only one Back request runs at a time; errors, invalid results, and overlapping requests resolve as failed. `await hiraya.app.clearBackHandler()` unregisters the handler and aborts active work. `hiraya.close()` also aborts active Back work.
+
 The SDK applies host theme tokens to `document.documentElement` after `app.getLaunchContext()` and `theme.get()` and before `theme.changed` subscribers run. It sets `data-theme` plus the `--hiraya-*` token variables, so apps normally only subscribe to theme changes for app-specific behavior. Projection is skipped outside a document; tests can provide `themeTarget` to `connectHiraya`.
 
 File and folder handles are opaque. For safe updates, retain `FileMetadata.contentRevision` and pass it as `expectedRevision` to `files.write`; resolve `CONFLICT` rather than retrying blindly. Declare every used capability in the app manifest and catch `HirayaSdkError` at user-action boundaries.

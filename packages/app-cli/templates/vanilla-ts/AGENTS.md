@@ -35,6 +35,8 @@ const launch = await hiraya.app.getLaunchContext();
 
 Connect once during startup. Render a useful error if the handshake fails. Register event listeners after connecting, keep each unsubscribe function, and call the unsubscribers plus `hiraya.close()` on `pagehide`. Requests accept `AbortSignal` and timeout options; cancel work that no longer belongs to the current UI. A closed client rejects new requests with `UNAVAILABLE`.
 
+If the app has internal navigation, register `hiraya.app.setBackHandler(signal => ...)`. Return `"handled"` after moving to the previous in-app view or `"home"` when Hiraya should leave the app. Stop pending work when the signal aborts, and call `hiraya.app.clearBackHandler()` when the app no longer handles Back. The SDK serializes Back requests and treats handler errors as failures.
+
 Launch context contains the launch ID, source (`launcher`, `file`, `command`, or `restore`), arguments, initial theme, and file/folder handles. It is a snapshot for this launch, not global mutable state.
 
 ## Opaque Handles
