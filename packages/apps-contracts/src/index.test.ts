@@ -109,6 +109,9 @@ describe("apps contracts", () => {
     expect(() => parseRpcRequest({ ...oldSdkRequest, timeoutMs: 120_000 })).toThrow("unsupported shape");
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r1", method: "window.setDirty", params: { dirty: "true" } })).toThrow("dirty");
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r1", method: "storage.get", params: { key: "x", extra: true } })).toThrow("unsupported shape");
+    const promotedCommands = { protocolVersion: 1, type: "request", id: "commands", method: "commands.set", params: { commands: [{ id: "secondary", title: "Secondary", promoted: false }, { id: "save", title: "Save", shortcut: "Ctrl+S", enabled: true, promoted: true }] } };
+    expect(parseRpcRequest(promotedCommands)).toEqual(promotedCommands);
+    expect(() => parseRpcRequest({ ...promotedCommands, params: { commands: [{ id: "save", title: "Save", promoted: "true" }] } })).toThrow("promoted");
     expect(parseServiceResult("dialogs.confirm", true)).toBe(true);
     expect(() => parseServiceResult("dialogs.confirm", "yes")).toThrow("Confirmation");
     expect(parseRpcEvent({ protocolVersion: 1, type: "event", event: "commands.invoked", payload: { id: "save" } })).toEqual(expect.objectContaining({ payload: { id: "save" } }));
