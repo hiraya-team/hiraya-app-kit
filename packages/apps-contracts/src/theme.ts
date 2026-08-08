@@ -26,12 +26,6 @@ export type ThemeColors = {
   dangerSurface: string;
   desktopText: string;
   selection: string;
-  editorBackground: string;
-  editorText: string;
-  editorGutter: string;
-  editorKeyword: string;
-  editorString: string;
-  editorComment: string;
 };
 
 export type ThemeDefinition = {
@@ -50,8 +44,7 @@ export type CustomTheme = { id: string; name: string; definition: ThemeDefinitio
 const BUILTIN_THEME_IDS = ["hiraya-dusk", "warm-paper", "midnight-glass", "high-contrast"];
 const COLOR_KEYS: Array<keyof ThemeColors> = [
   "shell", "chrome", "chromeText", "window", "windowMuted", "text", "textMuted", "accent", "accentText", "border",
-  "danger", "dangerSurface", "desktopText", "selection", "editorBackground", "editorText", "editorGutter", "editorKeyword",
-  "editorString", "editorComment",
+  "danger", "dangerSurface", "desktopText", "selection",
 ];
 const HEX_COLOR = /^#[\da-f]{6}$/i;
 const GRADIENT_ANGLES = new Set([0, 45, 90, 135, 180, 225, 270, 315]);
@@ -118,8 +111,7 @@ function hasContrastIssues(definition: ThemeDefinition) {
     [c.accentText, c.accent], [strongest(accentSurface, [accentOnWindow, c.text, c.chromeText]), accentSurface],
     [strongest(statusSurface, [status, c.text, c.chromeText]), statusSurface], [strongest(readOnlySurface, [accentOnChrome, c.chromeText, c.text]), readOnlySurface],
     [strongest(c.danger, [c.accentText, c.chromeText, c.text]), c.danger], [strongest(c.dangerSurface, [c.danger, c.text, c.chromeText]), c.dangerSurface],
-    [c.textMuted, c.window], [c.editorText, c.editorBackground], [c.editorComment, c.editorBackground], [c.editorComment, c.editorGutter],
-    [c.editorKeyword, c.editorBackground], [c.editorString, c.editorBackground],
+    [c.textMuted, c.window],
   ];
   const indicatorPairs = [
     [accentOnWindow, c.window], [accentOnWindow, minimumWindow], [accentOnChrome, c.chrome], [accentOnChrome, minimumChrome],

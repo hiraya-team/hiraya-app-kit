@@ -31,8 +31,7 @@ const editorDefinition = {
   colors: {
     shell: "#000000", chrome: "#000000", chromeText: "#000000", window: "#000000", windowMuted: "#000000",
     text: "#000000", textMuted: "#000000", accent: "#000000", accentText: "#000000", border: "#000000",
-    danger: "#000000", dangerSurface: "#000000", desktopText: "#000000", selection: "#000000", editorBackground: "#000000",
-    editorText: "#000000", editorGutter: "#000000", editorKeyword: "#000000", editorString: "#000000", editorComment: "#000000",
+    danger: "#000000", dangerSurface: "#000000", desktopText: "#000000", selection: "#000000",
   },
   shape: { radius: 0, borderWidth: 0 }, effects: { blur: 0, opacity: 1, shadow: 0 },
   typography: { family: "system", scale: 1, weight: 400 }, density: 1, motion: 1, iconSize: 48,
