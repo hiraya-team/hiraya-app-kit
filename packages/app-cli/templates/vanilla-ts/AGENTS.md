@@ -80,7 +80,7 @@ Permissions are not a substitute for user intent. Prefer a dialog-acquired handl
 
 ## Commands
 
-Publish the complete current command list with `hiraya.commands.set`. Command IDs are stable app-owned identifiers; titles are user-facing. Keep one `commands.invoked` subscription and dispatch by ID. Re-publish commands when enabled state or labels change, and call `commands.clear` when commands should no longer be offered.
+Publish the complete current command list with `hiraya.commands.set`. Command IDs are stable app-owned identifiers; titles are user-facing. Set `promoted: true` for the few actions that belong in host chrome, ordered from least to most important. Keep one `commands.invoked` subscription and dispatch by ID. Re-publish commands when enabled state or labels change, and call `commands.clear` when commands should no longer be offered.
 
 Commands can be invoked while focus is elsewhere, so handlers must use current state and prevent overlapping destructive work. A shortcut is a hint to Hiraya, not a browser keydown replacement.
 
