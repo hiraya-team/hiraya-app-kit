@@ -19,7 +19,7 @@ try {
     console.log(`${relativeOutput(result.destination)}\nsha256 ${result.inspection.digest}`);
   } else if (command === "validate") {
     const inspection = await inspectAppInput(input);
-    console.log(`Valid ${inspection.kind} ${inspection.manifest.id}${inspection.kind === "app" ? `@${inspection.manifest.version}` : ""}\nsha256 ${inspection.digest}`);
+    console.log(`Valid ${inspection.kind} ${inspection.kind === "scene" ? inspection.manifest.entrypoint : inspection.manifest.id}${inspection.kind === "app" ? `@${inspection.manifest.version}` : ""}\nsha256 ${inspection.digest}`);
   } else if (command === "inspect") {
     const inspection = await inspectAppInput(input);
     console.log(JSON.stringify({

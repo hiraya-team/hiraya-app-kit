@@ -1,12 +1,20 @@
 import { parseManifestV2, type AppPackageInspection } from "@hiraya-team/apps-contracts";
+import {
+  HIRAYA_SCENE_EXTENSION,
+  HIRAYA_SCENE_MANIFEST_PATH,
+  HIRAYA_SCENE_MIME_TYPE,
+  parseSceneManifestV1,
+  type HirayaSceneManifestV1,
+} from "@hiraya-team/apps-contracts/scene";
 import { parseCustomTheme, type CustomTheme, type ThemeWallpaperKind } from "@hiraya-team/apps-contracts/theme";
 import { parse as parseModule } from "acorn";
+import { unzipSync, zipSync, type Zippable } from "fflate";
 import { parse } from "parse5";
-import { unzipSync } from "fflate";
 
 export const APP_ARCHIVE_EXTENSION = ".hiraya.app";
 export const APP_MANIFEST_PATH = "hiraya.app.json";
 export const THEME_MANIFEST_PATH = "hiraya.theme.json";
+export { HIRAYA_SCENE_EXTENSION, HIRAYA_SCENE_MANIFEST_PATH, HIRAYA_SCENE_MIME_TYPE };
 export const APP_ARCHIVE_LIMITS = {
   archiveBytes: 32 * 1024 * 1024,
   entries: 512,
@@ -53,9 +61,24 @@ export type ThemePackageInspection = {
   expandedBytes: number;
   files: ReadonlyMap<string, Uint8Array>;
 };
-export type HirayaPackageInspection = ({ kind: "app" } & AppPackageInspection) | ThemePackageInspection;
+export type ScenePackageInspection = {
+  kind: "scene";
+  manifest: HirayaSceneManifestV1;
+  digest: string;
+  entryCount: number;
+  compressedBytes: number;
+  expandedBytes: number;
+  files: ReadonlyMap<string, Uint8Array>;
+};
+export type SceneDraftInspection = Omit<ScenePackageInspection, "manifest"> & {
+  manifestSource: string;
+  manifest?: HirayaSceneManifestV1;
+  manifestError?: string;
+};
+export type HirayaPackageInspection = ({ kind: "app" } & AppPackageInspection) | ThemePackageInspection | ScenePackageInspection;
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
+const DETERMINISTIC_TIMESTAMP = new Date("1980-01-01T00:00:00.000Z");
 
 function uint16(bytes: Uint8Array, offset: number) {
   return bytes[offset] | (bytes[offset + 1] << 8);
@@ -368,6 +391,22 @@ export function validateThemeFiles(files: ReadonlyMap<string, Uint8Array>) {
   return { manifest, files };
 }
 
+export function validateSceneFiles(files: ReadonlyMap<string, Uint8Array>) {
+  const manifestBytes = files.get(HIRAYA_SCENE_MANIFEST_PATH);
+  if (!manifestBytes) throw new TypeError(`Package must contain ${HIRAYA_SCENE_MANIFEST_PATH} at its root.`);
+  if (manifestBytes.byteLength > APP_ARCHIVE_LIMITS.manifestBytes) throw new TypeError("Scene manifest exceeds the size limit.");
+  let value: unknown;
+  try { value = JSON.parse(decodeText(manifestBytes, "Scene manifest")); } catch (error) {
+    if (error instanceof TypeError && error.message.endsWith("valid UTF-8.")) throw error;
+    throw new TypeError("Scene manifest must be valid JSON.");
+  }
+  const manifest = parseSceneManifestV1(value);
+  const entrypoint = normalizeArchivePath(manifest.entrypoint);
+  if (!files.has(entrypoint)) throw new TypeError(`Scene entrypoint is missing: ${entrypoint}.`);
+  validateHtml(entrypoint, files);
+  return { manifest: { ...manifest, entrypoint }, files };
+}
+
 export function validateAppFiles(files: ReadonlyMap<string, Uint8Array>) {
   const normalized = new Map<string, Uint8Array>();
   let expandedBytes = 0;
@@ -403,13 +442,19 @@ export async function sha256(bytes: Uint8Array) {
 
 export async function inspectAppArchive(bytes: Uint8Array): Promise<AppPackageInspection> {
   const packageInspection = await inspectHirayaArchive(bytes);
-  if (packageInspection.kind !== "app") throw new TypeError("The package contains a theme, not an app.");
+  if (packageInspection.kind !== "app") throw new TypeError(`The package contains a ${packageInspection.kind}, not an app.`);
   const { kind: _kind, ...inspection } = packageInspection;
   void _kind;
   return inspection;
 }
 
-export async function inspectHirayaArchive(bytes: Uint8Array): Promise<HirayaPackageInspection> {
+function manifestKind(files: ReadonlyMap<string, Uint8Array>) {
+  const manifests = [APP_MANIFEST_PATH, THEME_MANIFEST_PATH, HIRAYA_SCENE_MANIFEST_PATH].filter((path) => files.has(path));
+  if (manifests.length !== 1) throw new TypeError(`Package must contain exactly one of ${APP_MANIFEST_PATH}, ${THEME_MANIFEST_PATH}, or ${HIRAYA_SCENE_MANIFEST_PATH}.`);
+  return manifests[0];
+}
+
+function unpackArchive(bytes: Uint8Array) {
   const directory = readZipDirectory(bytes);
   let unzipped: Record<string, Uint8Array>;
   try { unzipped = unzipSync(bytes); } catch { throw new TypeError("Archive could not be decompressed."); }
@@ -420,10 +465,74 @@ export async function inspectHirayaArchive(bytes: Uint8Array): Promise<HirayaPac
     files.set(entry.path, data);
   }
   if (Object.keys(unzipped).length !== directory.entries.length) throw new TypeError("Archive entries do not match its ZIP directory.");
-  const app = files.has(APP_MANIFEST_PATH);
-  const theme = files.has(THEME_MANIFEST_PATH);
-  if (app === theme) throw new TypeError(`Package must contain exactly one of ${APP_MANIFEST_PATH} or ${THEME_MANIFEST_PATH}.`);
-  const validated = app ? validateAppFiles(files) : validateThemeFiles(files);
+  return { directory, files };
+}
+
+export async function inspectSceneArchive(bytes: Uint8Array): Promise<ScenePackageInspection> {
+  const inspection = await inspectHirayaArchive(bytes);
+  if (inspection.kind !== "scene") throw new TypeError(`The package contains an ${inspection.kind}, not a scene.`);
+  return inspection;
+}
+
+export async function openSceneArchive(bytes: Uint8Array): Promise<SceneDraftInspection> {
+  const { directory, files } = unpackArchive(bytes);
+  if (manifestKind(files) !== HIRAYA_SCENE_MANIFEST_PATH) throw new TypeError("The package is not a scene.");
+  const manifestBytes = files.get(HIRAYA_SCENE_MANIFEST_PATH)!;
+  if (manifestBytes.byteLength > APP_ARCHIVE_LIMITS.manifestBytes) throw new TypeError("Scene manifest exceeds the size limit.");
+  const manifestSource = decodeText(manifestBytes, "Scene manifest");
+  let manifest: HirayaSceneManifestV1 | undefined;
+  let manifestError: string | undefined;
+  try { manifest = parseSceneManifestV1(JSON.parse(manifestSource)); }
+  catch (error) { manifestError = error instanceof Error ? error.message : "Scene manifest is invalid."; }
+  return {
+    kind: "scene",
+    manifestSource,
+    ...(manifest ? { manifest } : { manifestError }),
+    digest: await sha256(bytes),
+    entryCount: files.size,
+    compressedBytes: bytes.byteLength,
+    expandedBytes: directory.expandedBytes,
+    files,
+  };
+}
+
+function prepareSceneFiles(files: ReadonlyMap<string, Uint8Array>) {
+  const normalized = new Map<string, Uint8Array>();
+  let expandedBytes = 0;
+  for (const [rawPath, bytes] of files) {
+    const path = normalizeArchivePath(rawPath);
+    if (normalized.has(path)) throw new TypeError(`Package contains duplicate normalized path: ${path}.`);
+    if (bytes.byteLength > APP_ARCHIVE_LIMITS.entryBytes) throw new TypeError(`Package file exceeds the size limit: ${path}.`);
+    if (normalized.size >= APP_ARCHIVE_LIMITS.entries) throw new TypeError("Package contains too many files.");
+    expandedBytes += bytes.byteLength;
+    if (expandedBytes > APP_ARCHIVE_LIMITS.expandedBytes) throw new TypeError("Package exceeds the expanded size limit.");
+    normalized.set(path, bytes);
+  }
+  if (manifestKind(normalized) !== HIRAYA_SCENE_MANIFEST_PATH) throw new TypeError("Package files are not a scene.");
+  const manifestBytes = normalized.get(HIRAYA_SCENE_MANIFEST_PATH)!;
+  if (manifestBytes.byteLength > APP_ARCHIVE_LIMITS.manifestBytes) throw new TypeError("Scene manifest exceeds the size limit.");
+  decodeText(manifestBytes, "Scene manifest");
+  return normalized;
+}
+
+export function createSceneArchive(files: ReadonlyMap<string, Uint8Array>) {
+  const archive: Zippable = {};
+  for (const [path, bytes] of [...prepareSceneFiles(files)].sort(([left], [right]) => left.localeCompare(right, "en"))) {
+    archive[path] = [bytes, { level: 6, mtime: DETERMINISTIC_TIMESTAMP }];
+  }
+  const zipped = zipSync(archive, { level: 6, mtime: DETERMINISTIC_TIMESTAMP });
+  readZipDirectory(zipped);
+  return zipped;
+}
+
+export function repackSceneArchive(draft: Pick<SceneDraftInspection, "files">) {
+  return createSceneArchive(draft.files);
+}
+
+export async function inspectHirayaArchive(bytes: Uint8Array): Promise<HirayaPackageInspection> {
+  const { directory, files } = unpackArchive(bytes);
+  const kind = manifestKind(files);
+  const validated = kind === APP_MANIFEST_PATH ? validateAppFiles(files) : kind === THEME_MANIFEST_PATH ? validateThemeFiles(files) : validateSceneFiles(files);
   const common = {
     digest: await sha256(bytes),
     entryCount: files.size,
@@ -431,7 +540,7 @@ export async function inspectHirayaArchive(bytes: Uint8Array): Promise<HirayaPac
     expandedBytes: directory.expandedBytes,
     files: validated.files,
   };
-  return app
-    ? { kind: "app", manifest: (validated as ReturnType<typeof validateAppFiles>).manifest, ...common }
-    : { kind: "theme", manifest: (validated as ReturnType<typeof validateThemeFiles>).manifest, ...common };
+  if (kind === APP_MANIFEST_PATH) return { kind: "app", manifest: (validated as ReturnType<typeof validateAppFiles>).manifest, ...common };
+  if (kind === THEME_MANIFEST_PATH) return { kind: "theme", manifest: (validated as ReturnType<typeof validateThemeFiles>).manifest, ...common };
+  return { kind: "scene", manifest: (validated as ReturnType<typeof validateSceneFiles>).manifest, ...common };
 }
