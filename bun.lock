@@ -15,12 +15,12 @@
     },
     "packages/app-cli": {
       "name": "@hiraya-team/app-cli",
-      "version": "1.0.0",
+      "version": "2.2.0",
       "bin": {
         "hiraya-app": "./dist/cli.js",
       },
       "dependencies": {
-        "@hiraya-team/apps-contracts": "1.0.0",
+        "@hiraya-team/apps-contracts": "2.2.0",
         "acorn": "8.17.0",
         "fflate": "0.8.3",
         "parse5": "8.0.0",
@@ -28,13 +28,13 @@
     },
     "packages/apps-contracts": {
       "name": "@hiraya-team/apps-contracts",
-      "version": "1.0.0",
+      "version": "2.2.0",
     },
     "packages/apps-sdk": {
       "name": "@hiraya-team/apps-sdk",
-      "version": "1.0.0",
+      "version": "2.2.0",
       "dependencies": {
-        "@hiraya-team/apps-contracts": "1.0.0",
+        "@hiraya-team/apps-contracts": "2.2.0",
       },
     },
   },

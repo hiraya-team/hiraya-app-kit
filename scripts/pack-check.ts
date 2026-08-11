@@ -68,9 +68,10 @@ await writeFile(join(consumer, "package.json"), JSON.stringify({
 await writeFile(join(consumer, "imports.ts"), `
 import { parseManifestV2 } from "@hiraya-team/apps-contracts";
 import { parseCustomTheme } from "@hiraya-team/apps-contracts/theme";
+import { HIRAYA_SCENE_MIME_TYPE, parseSceneManifestV1 } from "@hiraya-team/apps-contracts/scene";
 import { connectHiraya } from "@hiraya-team/apps-sdk";
-import { APP_MANIFEST_PATH, inspectAppArchive } from "@hiraya-team/app-cli";
-if (typeof parseManifestV2 !== "function" || typeof parseCustomTheme !== "function" || typeof connectHiraya !== "function" || typeof inspectAppArchive !== "function" || APP_MANIFEST_PATH !== "hiraya.app.json") throw new Error("Published exports are incomplete.");
+import { APP_MANIFEST_PATH, createSceneArchive, inspectAppArchive, inspectSceneArchive, openSceneArchive, repackSceneArchive } from "@hiraya-team/app-cli";
+if (typeof parseManifestV2 !== "function" || typeof parseCustomTheme !== "function" || typeof parseSceneManifestV1 !== "function" || HIRAYA_SCENE_MIME_TYPE !== "application/vnd.hiraya.scene+zip" || typeof connectHiraya !== "function" || typeof inspectAppArchive !== "function" || typeof inspectSceneArchive !== "function" || typeof openSceneArchive !== "function" || typeof createSceneArchive !== "function" || typeof repackSceneArchive !== "function" || APP_MANIFEST_PATH !== "hiraya.app.json") throw new Error("Published exports are incomplete.");
 `);
 await run(["bun", "install"], consumer);
 await run(["bun", "imports.ts"], consumer);

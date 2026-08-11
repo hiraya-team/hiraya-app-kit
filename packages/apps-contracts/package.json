@@ -1,11 +1,12 @@
 {
   "name": "@hiraya-team/apps-contracts",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Public protocol and package contracts for Hiraya apps.",
   "type": "module",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./theme": { "types": "./dist/theme.d.ts", "import": "./dist/theme.js" }
+    "./theme": { "types": "./dist/theme.d.ts", "import": "./dist/theme.js" },
+    "./scene": { "types": "./dist/scene.d.ts", "import": "./dist/scene.js" }
   },
   "types": "./dist/index.d.ts",
   "files": ["dist", "README.md", "LICENSE"],

@@ -3,7 +3,19 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
-import { APP_MANIFEST_PATH, THEME_MANIFEST_PATH, inspectAppArchive, inspectHirayaArchive } from "./archive";
+import {
+  APP_MANIFEST_PATH,
+  HIRAYA_SCENE_EXTENSION,
+  HIRAYA_SCENE_MANIFEST_PATH,
+  HIRAYA_SCENE_MIME_TYPE,
+  THEME_MANIFEST_PATH,
+  createSceneArchive,
+  inspectAppArchive,
+  inspectHirayaArchive,
+  inspectSceneArchive,
+  openSceneArchive,
+  repackSceneArchive,
+} from "./archive";
 import { createAppArchive, packageApp, readAppDirectory } from "./filesystem";
 
 const themeDefinition = {
@@ -215,6 +227,68 @@ describe("Hiraya theme archives", () => {
   test("rejects ambiguous packages and remote scene references", async () => {
     await expect(inspectHirayaArchive(archive({ ...appFiles(), [THEME_MANIFEST_PATH]: strToU8(JSON.stringify(themeManifest)) }))).rejects.toThrow("exactly one");
     await expect(inspectHirayaArchive(archive({ [THEME_MANIFEST_PATH]: strToU8(JSON.stringify(themeManifest)), "wallpaper.html": strToU8('<script src="https://evil.example/scene.js"></script>') }))).rejects.toThrow("remote reference");
+  });
+});
+
+describe("Hiraya Scene archives", () => {
+  function sceneFiles(manifest: string = JSON.stringify({ schemaVersion: 1, entrypoint: "scene/index.html" })) {
+    return new Map<string, Uint8Array>([
+      [HIRAYA_SCENE_MANIFEST_PATH, strToU8(manifest)],
+      ["scene/index.html", strToU8('<!doctype html><link rel="stylesheet" href="style.css"><script type="module" src="main.js"></script><img src="../media/sky.webp">')],
+      ["scene/style.css", strToU8('body { background: url("../media/sky.webp") }')],
+      ["scene/main.js", strToU8('import "./motion.js"; document.body.dataset.ready = "true";')],
+      ["scene/motion.js", strToU8("export const motion = true;")],
+      ["media/sky.webp", strToU8("image")],
+    ]);
+  }
+
+  test("exposes the format and strictly inspects a valid multi-file package", async () => {
+    expect(HIRAYA_SCENE_EXTENSION).toBe(".hiraya.scene");
+    expect(HIRAYA_SCENE_MIME_TYPE).toBe("application/vnd.hiraya.scene+zip");
+    const inspection = await inspectSceneArchive(createSceneArchive(sceneFiles()));
+    expect(inspection).toMatchObject({ kind: "scene", manifest: { schemaVersion: 1, entrypoint: "scene/index.html" }, entryCount: 6 });
+    expect((await inspectHirayaArchive(createSceneArchive(sceneFiles()))).kind).toBe("scene");
+  });
+
+  test("requires exactly one root manifest kind", async () => {
+    const scene = sceneFiles();
+    scene.set(APP_MANIFEST_PATH, strToU8(JSON.stringify(manifest())));
+    expect(() => createSceneArchive(scene)).toThrow("exactly one");
+    await expect(inspectHirayaArchive(archive({
+      [HIRAYA_SCENE_MANIFEST_PATH]: strToU8('{"schemaVersion":1,"entrypoint":"index.html"}'),
+      [THEME_MANIFEST_PATH]: strToU8("{}"),
+      "index.html": strToU8("<!doctype html>"),
+    }))).rejects.toThrow("exactly one");
+  });
+
+  test("keeps malformed drafts editable while strict inspection rejects them", async () => {
+    const bytes = createSceneArchive(sceneFiles('{"schemaVersion":1,"entrypoint":'));
+    const draft = await openSceneArchive(bytes);
+    expect(draft.manifestSource).toBe('{"schemaVersion":1,"entrypoint":');
+    expect(draft.manifest).toBeUndefined();
+    expect(draft.manifestError).toBeTruthy();
+    await expect(inspectSceneArchive(bytes)).rejects.toThrow("valid JSON");
+  });
+
+  test("rejects unsafe archives and unsafe executable resources", async () => {
+    await expect(openSceneArchive(archive({ ...Object.fromEntries(sceneFiles()), "../escape": strToU8("bad") }))).rejects.toThrow("unsafe path");
+    for (const [path, source, message] of [
+      ["scene/index.html", '<a href="https://evil.example/">leave</a>', "remote reference"],
+      ["scene/index.html", '<script type="module" src="missing.js"></script>', "missing package file"],
+      ["scene/main.js", 'import "./missing.js"', "missing package file"],
+      ["scene/main.js", "import {", "invalid JavaScript"],
+    ] as const) {
+      const files = sceneFiles();
+      files.set(path, strToU8(source));
+      await expect(inspectSceneArchive(createSceneArchive(files))).rejects.toThrow(message);
+    }
+  });
+
+  test("creates and repacks byte-for-byte deterministically", async () => {
+    const files = new Map([...sceneFiles()].reverse());
+    const created = createSceneArchive(files);
+    expect(createSceneArchive(files)).toEqual(created);
+    expect(repackSceneArchive(await openSceneArchive(created))).toEqual(created);
   });
 });
 
