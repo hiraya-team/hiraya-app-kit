@@ -9,6 +9,5 @@ export default tseslint.config(
   {
     files: ["**/*.ts"],
     languageOptions: { globals: { ...globals.browser, ...globals.node, Bun: "readonly" } },
-    rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
 );

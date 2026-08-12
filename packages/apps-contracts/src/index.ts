@@ -577,10 +577,6 @@ function parseDirectoryEntry(value: unknown): DirectoryEntry {
   throw new TypeError("Directory entry kind is invalid.");
 }
 
-function optionalText(value: unknown, label: string, max = 256): string | undefined {
-  return value === undefined ? undefined : text(value, label, max);
-}
-
 function handle(value: unknown): FileHandle | FolderHandle {
   if (typeof value === "string" && value.startsWith("file_")) return parseFileHandle(value);
   return parseFolderHandle(value);
@@ -673,7 +669,7 @@ export function parseServiceParams<M extends ServiceMethod>(method: M, value: un
     case "window.setSize": shape(["width", "height"]); result = { width: number(params.width, "Window width", { integer: true, min: 1, max: 16_384 }), height: number(params.height, "Window height", { integer: true, min: 1, max: 16_384 }) }; break;
     case "window.setFullscreen": shape(["fullscreen"]); result = { fullscreen: boolean(params.fullscreen, "Window fullscreen state") }; break;
     case "commands.set": shape(["commands"]); if (!Array.isArray(params.commands) || params.commands.length > 64) throw new TypeError("Commands are invalid."); result = { commands: params.commands.map((item) => { const command = record(item, "Command"); exact(command, ["id", "title"], ["shortcut", "enabled", "promoted"], "Command"); return { id: text(command.id, "Command ID", 128), title: text(command.title, "Command title", 120), ...(command.shortcut === undefined ? {} : { shortcut: text(command.shortcut, "Command shortcut", 64) }), ...(command.enabled === undefined ? {} : { enabled: boolean(command.enabled, "Command enabled state") }), ...(command.promoted === undefined ? {} : { promoted: boolean(command.promoted, "Command promoted state") }) }; }) }; break;
-    case "notifications.show": shape(["title"], ["body", "tag"]); result = { title: text(params.title, "Notification title", 120), ...(params.body === undefined ? {} : { body: optionalText(params.body, "Notification body", 1_000) }), ...(params.tag === undefined ? {} : { tag: text(params.tag, "Notification tag", 128) }) }; break;
+    case "notifications.show": shape(["title"], ["body", "tag"]); result = { title: text(params.title, "Notification title", 120), ...(params.body === undefined ? {} : { body: text(params.body, "Notification body", 1_000) }), ...(params.tag === undefined ? {} : { tag: text(params.tag, "Notification tag", 128) }) }; break;
     case "notifications.dismiss": shape(["id"]); result = { id: text(params.id, "Notification ID") }; break;
     case "theme.get": result = empty(params, "theme.get params"); break;
     case "themes.select": case "themes.delete": shape(["themeId"]); result = { themeId: text(params.themeId, "Theme ID", 180) }; break;

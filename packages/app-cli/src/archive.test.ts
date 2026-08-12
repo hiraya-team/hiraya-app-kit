@@ -16,7 +16,8 @@ import {
   openSceneArchive,
   repackSceneArchive,
 } from "./archive";
-import { createAppArchive, packageApp, readAppDirectory } from "./filesystem";
+import { createDeterministicZip } from "./archive-utils";
+import { packageApp, readAppDirectory } from "./filesystem";
 
 const themeDefinition = {
   colors: {
@@ -94,8 +95,8 @@ describe("Hiraya app archives", () => {
 
   test("creates byte-for-byte deterministic sorted archives", () => {
     const files = new Map(Object.entries(appFiles()).reverse());
-    const first = createAppArchive(files);
-    const second = createAppArchive(files);
+    const first = createDeterministicZip(files);
+    const second = createDeterministicZip(files);
     expect(second).toEqual(first);
     const names = signatures(first, 0x02014b50).map((offset) => {
       const length = first[offset + 28] | (first[offset + 29] << 8);

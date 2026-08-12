@@ -325,7 +325,8 @@ export class HirayaClient {
         if (!pending) return;
         if (response.ok) {
           const result = parseServiceResult(pending.method, response.result);
-          this.applyResponseTheme(pending.method, result);
+          if (pending.method === "app.getLaunchContext") this.applyTheme((result as ServiceMethods["app.getLaunchContext"]["result"]).theme);
+          if (pending.method === "theme.get") this.applyTheme(result as ThemeTokens);
           pending.resolve(result);
         }
         else pending.reject(new HirayaSdkError(response.error.message, response.error.code, response.error.details));
@@ -371,11 +372,6 @@ export class HirayaClient {
     } finally {
       if (this.activeBackRequest === controller) this.activeBackRequest = undefined;
     }
-  }
-
-  private applyResponseTheme(method: ServiceMethod, result: unknown): void {
-    if (method === "app.getLaunchContext") this.applyTheme((result as ServiceMethods["app.getLaunchContext"]["result"]).theme);
-    if (method === "theme.get") this.applyTheme(result as ThemeTokens);
   }
 
   private applyTheme(theme: ThemeTokens): void {
