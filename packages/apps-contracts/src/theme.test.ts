@@ -10,10 +10,9 @@ test("validates portable theme definitions", () => {
     },
     shape: { radius: 14, borderWidth: 1 }, effects: { blur: 22, opacity: 0.9, shadow: 0.55 },
     typography: { family: "humanist", scale: 1, weight: 600 }, density: 1, motion: 1, iconSize: 60,
-  };
+  } as const;
   expect(parseCustomTheme({ id: "dev.hiraya.aurora", name: "Aurora", definition })).toEqual({ id: "dev.hiraya.aurora", name: "Aurora", definition });
   expect(() => parseCustomTheme({ id: "../bad", name: "Bad", definition })).toThrow("invalid ID");
-  const legacy = structuredClone(definition) as typeof definition & { colors: typeof definition.colors & Record<string, string> };
-  Object.assign(legacy.colors, { editorBackground: "#f8f7f2", editorText: "#27302d", editorGutter: "#e8e8e1", editorKeyword: "#875d18", editorString: "#47735d", editorComment: "#606964" });
-  expect(parseThemeDefinition(legacy)).toEqual(definition);
+  expect(() => parseThemeDefinition({ ...definition, legacyEditorPalette: {} })).toThrow("unsupported format");
+  expect(() => parseThemeDefinition({ ...definition, colors: { ...definition.colors, editorBackground: "#f8f7f2" } })).toThrow("unsupported format");
 });

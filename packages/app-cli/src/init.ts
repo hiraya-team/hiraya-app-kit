@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { parseManifestV2 } from "@hiraya-team/apps-contracts";
 
 const TEMPLATE_DIRECTORY = fileURLToPath(new URL("../templates/vanilla-ts", import.meta.url));
+const PACKAGE_VERSION = (JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
 
 export interface InitAppResult {
   destination: string;
@@ -42,6 +43,8 @@ export async function initApp(directory: string, requestedAppId?: string): Promi
     const packagePath = join(destination, "package.json");
     const packageMetadata = JSON.parse(await readFile(packagePath, "utf8")) as Record<string, unknown>;
     packageMetadata.name = packageName;
+    (packageMetadata.dependencies as Record<string, string>)["@hiraya-team/apps-sdk"] = PACKAGE_VERSION;
+    (packageMetadata.devDependencies as Record<string, string>)["@hiraya-team/app-cli"] = PACKAGE_VERSION;
     await writeFile(packagePath, `${JSON.stringify(packageMetadata, null, 2)}\n`);
     return { destination, appId, packageName };
   } catch (error) {

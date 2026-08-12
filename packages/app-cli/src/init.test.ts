@@ -1,12 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initApp } from "./init";
 
 describe("hiraya-app init", () => {
-  test("creates a workspace-compatible Vanilla TS app with author guidance", async () => {
+  const temporary: string[] = [];
+  const temp = async () => {
     const root = await mkdtemp(join(tmpdir(), "hiraya-init-"));
+    temporary.push(root);
+    return root;
+  };
+  afterAll(async () => { await Promise.all(temporary.map((root) => rm(root, { recursive: true, force: true }))); });
+
+  test("creates a workspace-compatible Vanilla TS app with author guidance", async () => {
+    const root = await temp();
     const destination = join(root, "Field Notes");
     const result = await initApp(destination, "com.example.field-notes");
 
@@ -16,8 +24,8 @@ describe("hiraya-app init", () => {
     expect(manifest).toEqual(expect.objectContaining({ schemaVersion: 2, uiRuntime: 1, id: "com.example.field-notes", name: "Field Notes" }));
     expect(packageMetadata).toEqual(expect.objectContaining({
       name: "hiraya-app-field-notes",
-      dependencies: { "@hiraya-team/apps-sdk": "1.0.0" },
-      devDependencies: expect.objectContaining({ "@hiraya-team/app-cli": "1.0.0" }),
+      dependencies: { "@hiraya-team/apps-sdk": "2.2.0" },
+      devDependencies: expect.objectContaining({ "@hiraya-team/app-cli": "2.2.0" }),
     }));
     expect(await readFile(join(destination, "src", "main.ts"), "utf8")).toContain('const APP_ID = "com.example.field-notes";');
     const guide = await readFile(join(destination, "AGENTS.md"), "utf8");
@@ -27,7 +35,7 @@ describe("hiraya-app init", () => {
   });
 
   test("never overwrites an existing destination", async () => {
-    const root = await mkdtemp(join(tmpdir(), "hiraya-init-"));
+    const root = await temp();
     const destination = join(root, "existing");
     await Bun.write(destination, "keep me");
     await expect(initApp(destination, "com.example.existing")).rejects.toThrow("already exists");
@@ -35,7 +43,7 @@ describe("hiraya-app init", () => {
   });
 
   test("rejects invalid app IDs before creating the destination", async () => {
-    const root = await mkdtemp(join(tmpdir(), "hiraya-init-"));
+    const root = await temp();
     const destination = join(root, "invalid");
     await expect(initApp(destination, "Invalid App ID")).rejects.toThrow("App ID is invalid");
     await writeFile(join(root, "sentinel"), "unchanged");

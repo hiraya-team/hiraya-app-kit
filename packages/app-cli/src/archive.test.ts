@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
@@ -42,7 +42,7 @@ function manifest(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function appFiles(overrides: Record<string, Uint8Array> = {}) {
+function appFiles(overrides: Record<string, Uint8Array> = {}): Record<string, Uint8Array> {
   return {
     [APP_MANIFEST_PATH]: strToU8(JSON.stringify(manifest())),
     "index.html": strToU8('<!doctype html><link rel="stylesheet" href="assets/app.css"><script type="module" src="assets/app.js"></script><iframe src="frame.html"></iframe>'),
@@ -55,7 +55,7 @@ function appFiles(overrides: Record<string, Uint8Array> = {}) {
   };
 }
 
-function archive(files = appFiles()) {
+function archive(files: Record<string, Uint8Array> = appFiles()) {
   return zipSync(files, { level: 6, mtime: new Date("1980-01-01T00:00:00Z") });
 }
 
@@ -85,7 +85,7 @@ describe("Hiraya app archives", () => {
     const bytes = archive();
     const first = await inspectAppArchive(bytes);
     const second = await inspectAppArchive(bytes);
-    expect(first.manifest).toEqual(manifest());
+    expect(first.manifest).toEqual(manifest() as typeof first.manifest);
     expect(first.entryCount).toBe(7);
     expect(first.expandedBytes).toBeGreaterThan(0);
     expect(first.digest).toMatch(/^[a-f0-9]{64}$/);
@@ -94,10 +94,12 @@ describe("Hiraya app archives", () => {
 
   test("creates byte-for-byte deterministic sorted archives", () => {
     const files = new Map(Object.entries(appFiles()).reverse());
-    expect(createAppArchive(files)).toEqual(createAppArchive(files));
-    const names = signatures(createAppArchive(files), 0x02014b50).map((offset) => {
-      const length = createAppArchive(files)[offset + 28] | (createAppArchive(files)[offset + 29] << 8);
-      return new TextDecoder().decode(createAppArchive(files).subarray(offset + 46, offset + 46 + length));
+    const first = createAppArchive(files);
+    const second = createAppArchive(files);
+    expect(second).toEqual(first);
+    const names = signatures(first, 0x02014b50).map((offset) => {
+      const length = first[offset + 28] | (first[offset + 29] << 8);
+      return new TextDecoder().decode(first.subarray(offset + 46, offset + 46 + length));
     });
     expect(names).toEqual([...names].sort((left, right) => left.localeCompare(right, "en")));
   });
@@ -218,7 +220,7 @@ describe("Hiraya theme archives", () => {
 
   test("classifies and validates a sandboxed scene package", async () => {
     const inspection = await inspectHirayaArchive(archive({ [THEME_MANIFEST_PATH]: strToU8(JSON.stringify(themeManifest)), "wallpaper.html": strToU8('<!doctype html><style>body{background:url("glow.webp")}</style>'), "glow.webp": strToU8("image") }));
-    expect(inspection.kind).toBe("theme");
+    if (inspection.kind !== "theme") throw new Error("Expected a theme inspection.");
     expect(inspection.manifest.id).toBe(themeManifest.id);
     expect(inspection.manifest.wallpaper?.overlayColor).toBe("#10ABCF");
     await expect(inspectAppArchive(archive({ [THEME_MANIFEST_PATH]: strToU8(JSON.stringify(themeManifest)), "wallpaper.html": strToU8("<!doctype html>") }))).rejects.toThrow("theme, not an app");
@@ -227,6 +229,13 @@ describe("Hiraya theme archives", () => {
   test("rejects ambiguous packages and remote scene references", async () => {
     await expect(inspectHirayaArchive(archive({ ...appFiles(), [THEME_MANIFEST_PATH]: strToU8(JSON.stringify(themeManifest)) }))).rejects.toThrow("exactly one");
     await expect(inspectHirayaArchive(archive({ [THEME_MANIFEST_PATH]: strToU8(JSON.stringify(themeManifest)), "wallpaper.html": strToU8('<script src="https://evil.example/scene.js"></script>') }))).rejects.toThrow("remote reference");
+  });
+
+  test("requires a string wallpaper entrypoint", async () => {
+    await expect(inspectHirayaArchive(archive({
+      [THEME_MANIFEST_PATH]: strToU8(JSON.stringify({ ...themeManifest, wallpaper: { kind: "static", entrypoint: 42 } })),
+      "42": strToU8("image"),
+    }))).rejects.toThrow("entrypoint is invalid");
   });
 });
 
@@ -295,18 +304,23 @@ describe("Hiraya Scene archives", () => {
 describe("app package filesystem", () => {
   test("packages a directory and rejects filesystem symlinks", async () => {
     const root = await mkdtemp(join(tmpdir(), "hiraya-app-"));
-    await mkdir(join(root, "assets"));
-    for (const [path, bytes] of Object.entries(appFiles())) {
-      const target = join(root, path);
-      if (path.includes("/")) await mkdir(join(target, ".."), { recursive: true });
-      await writeFile(target, bytes);
-    }
-    const output = join(root, "..", "test.hiraya.app");
-    const packaged = await packageApp(root, output);
-    expect(packaged.inspection.manifest.id).toBe("dev.hiraya.test");
-    expect((await readFile(output)).byteLength).toBe(packaged.inspection.compressedBytes);
+    const output = join(root, "..", `test-${crypto.randomUUID()}.hiraya.app`);
+    try {
+      await mkdir(join(root, "assets"));
+      for (const [path, bytes] of Object.entries(appFiles())) {
+        const target = join(root, path);
+        if (path.includes("/")) await mkdir(join(target, ".."), { recursive: true });
+        await writeFile(target, bytes);
+      }
+      const packaged = await packageApp(root, output);
+      if (packaged.inspection.kind !== "app") throw new Error("Expected an app inspection.");
+      expect(packaged.inspection.manifest.id).toBe("dev.hiraya.test");
+      expect((await readFile(output)).byteLength).toBe(packaged.inspection.compressedBytes);
 
-    await symlink(join(root, "index.html"), join(root, "linked.html"));
-    await expect(readAppDirectory(root)).rejects.toThrow("symbolic links");
+      await symlink(join(root, "index.html"), join(root, "linked.html"));
+      await expect(readAppDirectory(root)).rejects.toThrow("symbolic links");
+    } finally {
+      await Promise.all([rm(root, { recursive: true, force: true }), rm(output, { force: true })]);
+    }
   });
 });

@@ -1,6 +1,6 @@
 import { lstat, mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { zipSync, type Zippable } from "fflate";
+import { createDeterministicZip } from "./archive-utils";
 import {
   APP_ARCHIVE_EXTENSION,
   APP_ARCHIVE_LIMITS,
@@ -11,8 +11,6 @@ import {
   validateThemeFiles,
   THEME_MANIFEST_PATH,
 } from "./archive";
-
-const DETERMINISTIC_TIMESTAMP = new Date("1980-01-01T00:00:00.000Z");
 
 export async function readAppDirectory(input: string) {
   const root = resolve(input);
@@ -49,13 +47,7 @@ export async function readAppDirectory(input: string) {
 }
 
 export function createAppArchive(files: ReadonlyMap<string, Uint8Array>) {
-  const archive: Zippable = {};
-  for (const [path, bytes] of [...files].sort(([left], [right]) => left.localeCompare(right, "en"))) {
-    archive[path] = [bytes, { level: 6, mtime: DETERMINISTIC_TIMESTAMP }];
-  }
-  const zipped = zipSync(archive, { level: 6, mtime: DETERMINISTIC_TIMESTAMP });
-  if (zipped.byteLength > APP_ARCHIVE_LIMITS.archiveBytes) throw new TypeError("Archive exceeds the compressed size limit.");
-  return zipped;
+  return createDeterministicZip(files);
 }
 
 export async function packageApp(input: string, output?: string) {

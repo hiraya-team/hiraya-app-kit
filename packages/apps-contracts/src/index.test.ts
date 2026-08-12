@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   parseAppCatalog,
   parseFileHandle,
+  parseFolderHandle,
   parseLaunchContext,
   parseManifestV2,
   parseRpcEvent,
@@ -11,6 +12,8 @@ import {
   parseThemeEditorState,
   parseThemeTokens,
   parseWallpaperEditorState,
+  type HirayaAppManifestV2,
+  type LaunchContext,
 } from "./index";
 
 const theme = {
@@ -39,7 +42,7 @@ const editorDefinition = {
 
 describe("apps contracts", () => {
   test("strictly parses manifest v2 for UI runtime 1", () => {
-    const manifest = {
+    const manifest: HirayaAppManifestV2 = {
       schemaVersion: 2,
       uiRuntime: 1,
       id: "dev.hiraya.notes",
@@ -67,7 +70,7 @@ describe("apps contracts", () => {
 
   test("strictly parses runtime app catalogs", () => {
     const manifest = parseManifestV2({ schemaVersion: 2, uiRuntime: 1, id: "dev.hiraya.notes", name: "Notes", version: "1.2.0", entrypoint: "index.html", permissions: [] });
-    const release = { kind: "store", slug: "notes", fileName: "dev.hiraya.notes-1.2.0-aabbcc.hiraya.app", digest: "a".repeat(64), size: 123, manifest };
+    const release = { kind: "store", slug: "notes", fileName: "dev.hiraya.notes-1.2.0-aabbcc.hiraya.app", digest: "a".repeat(64), size: 123, manifest } as const;
     expect(parseAppCatalog({ schemaVersion: 1, releases: [release] })).toEqual({ schemaVersion: 1, releases: [release] });
     expect(() => parseAppCatalog({ schemaVersion: 2, releases: [] })).toThrow("schema");
     expect(() => parseAppCatalog({ schemaVersion: 1, releases: [release, { ...release, digest: "b".repeat(64) }] })).toThrow("unique");
@@ -75,19 +78,19 @@ describe("apps contracts", () => {
   });
 
   test("brands only opaque typed handles", () => {
-    expect(parseFileHandle("file_0123456789abcdef")).toBe("file_0123456789abcdef");
+    expect(String(parseFileHandle("file_0123456789abcdef"))).toBe("file_0123456789abcdef");
     expect(() => parseFileHandle("folder_0123456789abcdef")).toThrow("File handle");
     expect(() => parseFileHandle("file/project/readme")).toThrow("File handle");
   });
 
   test("strictly parses launch and theme contracts", () => {
-    const context = {
+    const context: LaunchContext = {
       protocolVersion: 1,
       appId: "dev.hiraya.notes",
       launchId: "launch-1",
       source: "file",
-      files: ["file_0123456789abcdef"],
-      folders: ["folder_0123456789abcdef"],
+      files: [parseFileHandle("file_0123456789abcdef")],
+      folders: [parseFolderHandle("folder_0123456789abcdef")],
       arguments: ["readonly"],
       theme,
     };
@@ -96,19 +99,19 @@ describe("apps contracts", () => {
   });
 
   test("rejects loose RPC responses and errors", () => {
-    const response = { protocolVersion: 1, type: "response", id: "r1", ok: false, error: { code: "NOT_FOUND", message: "Missing" } };
+    const response = { protocolVersion: 1, type: "response", id: "r1", ok: false, error: { code: "NOT_FOUND", message: "Missing" } } as const;
     expect(parseRpcResponse(response)).toEqual(response);
     expect(() => parseRpcResponse({ ...response, result: null })).toThrow("unsupported shape");
     expect(() => parseRpcResponse({ ...response, error: { code: "NOPE", message: "Missing" } })).toThrow("code");
   });
 
   test("strictly validates method params, results, and event payloads", () => {
-    const oldSdkRequest = { protocolVersion: 1, type: "request", id: "r1", method: "window.setDirty", params: { dirty: true } };
+    const oldSdkRequest = { protocolVersion: 1, type: "request", id: "r1", method: "window.setDirty", params: { dirty: true } } as const;
     expect(parseRpcRequest(oldSdkRequest)).toEqual(oldSdkRequest);
     expect(() => parseRpcRequest({ ...oldSdkRequest, timeoutMs: 120_000 })).toThrow("unsupported shape");
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r1", method: "window.setDirty", params: { dirty: "true" } })).toThrow("dirty");
     expect(() => parseRpcRequest({ protocolVersion: 1, type: "request", id: "r1", method: "storage.get", params: { key: "x", extra: true } })).toThrow("unsupported shape");
-    const promotedCommands = { protocolVersion: 1, type: "request", id: "commands", method: "commands.set", params: { commands: [{ id: "secondary", title: "Secondary", promoted: false }, { id: "save", title: "Save", shortcut: "Ctrl+S", enabled: true, promoted: true }] } };
+    const promotedCommands = { protocolVersion: 1 as const, type: "request" as const, id: "commands", method: "commands.set" as const, params: { commands: [{ id: "secondary", title: "Secondary", promoted: false }, { id: "save", title: "Save", shortcut: "Ctrl+S", enabled: true, promoted: true }] } };
     expect(parseRpcRequest(promotedCommands)).toEqual(promotedCommands);
     expect(() => parseRpcRequest({ ...promotedCommands, params: { commands: [{ id: "save", title: "Save", promoted: "true" }] } })).toThrow("promoted");
     expect(parseServiceResult("dialogs.confirm", true)).toBe(true);
