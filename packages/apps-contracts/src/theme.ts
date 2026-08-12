@@ -63,10 +63,6 @@ function boundedNumber(value: unknown, min: number, max: number, integer = false
   return value;
 }
 
-function containsControl(value: string) {
-  return [...value].some((character) => (character.codePointAt(0) ?? 0) < 32 || character.codePointAt(0) === 127);
-}
-
 function relativeLuminance(color: string) {
   const channels = [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255)
     .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
@@ -169,7 +165,8 @@ export function parseCustomTheme(value: unknown): CustomTheme {
   const candidate = record(value);
   exact(candidate, ["id", "name", "definition"]);
   if (typeof candidate.id !== "string" || !candidate.id || candidate.id === "." || candidate.id === ".." || new TextEncoder().encode(candidate.id).byteLength > 180
-    || BUILTIN_THEME_IDS.includes(candidate.id) || candidate.id.includes("/") || candidate.id.includes("\\") || containsControl(candidate.id)) throw new Error("The custom theme has an invalid ID.");
+    // eslint-disable-next-line no-control-regex -- Theme IDs reject ASCII control bytes exactly.
+    || BUILTIN_THEME_IDS.includes(candidate.id) || candidate.id.includes("/") || candidate.id.includes("\\") || /[\u0000-\u001f\u007f]/.test(candidate.id)) throw new Error("The custom theme has an invalid ID.");
   if (typeof candidate.name !== "string" || candidate.name.trim() !== candidate.name || !candidate.name || [...candidate.name].length > 60 || /\p{Cc}/u.test(candidate.name)) throw new Error("The custom theme has an invalid name.");
   const definition = parseThemeDefinition(candidate.definition);
   if (hasContrastIssues(definition)) throw new Error("The custom theme does not provide sufficient text contrast.");

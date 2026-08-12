@@ -46,15 +46,11 @@ export async function readAppDirectory(input: string) {
   return app ? validateAppFiles(files) : validateThemeFiles(files);
 }
 
-export function createAppArchive(files: ReadonlyMap<string, Uint8Array>) {
-  return createDeterministicZip(files);
-}
-
 export async function packageApp(input: string, output?: string) {
   const validated = await readAppDirectory(input);
   const destination = resolve(output ?? `${basename(resolve(input))}${APP_ARCHIVE_EXTENSION}`);
   if (!destination.endsWith(APP_ARCHIVE_EXTENSION)) throw new TypeError(`Package output must end with ${APP_ARCHIVE_EXTENSION}.`);
-  const archive = createAppArchive(validated.files);
+  const archive = createDeterministicZip(validated.files);
   const inspection = await inspectHirayaArchive(archive);
   await mkdir(dirname(destination), { recursive: true });
   await writeFile(destination, archive);
@@ -67,7 +63,7 @@ export async function inspectAppInput(input: string) {
   if (stat.isSymbolicLink()) throw new TypeError("App input must not be a symbolic link.");
   if (stat.isDirectory()) {
     const validated = await readAppDirectory(path);
-    return inspectHirayaArchive(createAppArchive(validated.files));
+    return inspectHirayaArchive(createDeterministicZip(validated.files));
   }
   if (!stat.isFile() || !path.endsWith(APP_ARCHIVE_EXTENSION)) throw new TypeError(`App archive must end with ${APP_ARCHIVE_EXTENSION}.`);
   return inspectHirayaArchive(new Uint8Array(await readFile(path)));
