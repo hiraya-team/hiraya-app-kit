@@ -1,15 +1,16 @@
-import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "hiraya-app-kit-pack-"));
-const tarballs = join(temporary, "tarballs");
-await mkdir(tarballs);
+try {
+  const tarballs = join(temporary, "tarballs");
+  await mkdir(tarballs);
 
-const packages = ["apps-contracts", "apps-sdk", "app-cli"] as const;
-const archives = new Map<string, string>();
-const version = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version as string;
+  const packages = ["apps-contracts", "apps-sdk", "app-cli"] as const;
+  const archives = new Map<string, string>();
+  const version = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version as string;
 
 async function run(command: string[], cwd = root) {
   const process = Bun.spawn(command, { cwd, stdout: "inherit", stderr: "inherit" });
@@ -45,6 +46,8 @@ for (const name of packages) {
   }
 }
 
+const packedDependencies = Object.fromEntries(packages.map((name) => [`@hiraya-team/${name}`, archives.get(name)!]));
+
 const cliArchiveSource = await readFile(join(temporary, "unpacked-app-cli", "package", "dist", "archive.js"), "utf8");
 if (/node:(?:fs|path|url|os)/.test(cliArchiveSource)) throw new Error("The app-cli root export imports Node filesystem modules.");
 
@@ -54,16 +57,8 @@ await writeFile(join(consumer, "package.json"), JSON.stringify({
   name: "hiraya-pack-consumer",
   private: true,
   type: "module",
-  dependencies: {
-    "@hiraya-team/apps-contracts": archives.get("apps-contracts"),
-    "@hiraya-team/apps-sdk": archives.get("apps-sdk"),
-    "@hiraya-team/app-cli": archives.get("app-cli"),
-  },
-  overrides: {
-    "@hiraya-team/apps-contracts": archives.get("apps-contracts"),
-    "@hiraya-team/apps-sdk": archives.get("apps-sdk"),
-    "@hiraya-team/app-cli": archives.get("app-cli"),
-  },
+  dependencies: packedDependencies,
+  overrides: packedDependencies,
 }, null, 2));
 await writeFile(join(consumer, "imports.ts"), `
 import { parseManifestV2 } from "@hiraya-team/apps-contracts";
@@ -81,13 +76,12 @@ const app = join(consumer, "sample-app");
 await run([bin, "init", app, "com.example.sample"], consumer);
 const appPackagePath = join(app, "package.json");
 const appPackage = JSON.parse(await readFile(appPackagePath, "utf8"));
+if (appPackage.dependencies["@hiraya-team/apps-sdk"] !== version || appPackage.devDependencies["@hiraya-team/app-cli"] !== version) {
+  throw new Error(`Generated starter must pin app-kit ${version}.`);
+}
 appPackage.dependencies["@hiraya-team/apps-sdk"] = archives.get("apps-sdk");
 appPackage.devDependencies["@hiraya-team/app-cli"] = archives.get("app-cli");
-appPackage.overrides = {
-  "@hiraya-team/apps-contracts": archives.get("apps-contracts"),
-  "@hiraya-team/apps-sdk": archives.get("apps-sdk"),
-  "@hiraya-team/app-cli": archives.get("app-cli"),
-};
+appPackage.overrides = packedDependencies;
 await writeFile(appPackagePath, `${JSON.stringify(appPackage, null, 2)}\n`);
 await run(["bun", "install"], app);
 await run(["bun", "run", "build"], app);
@@ -110,4 +104,7 @@ const themeArchive = join(consumer, "sample-theme.hiraya.app");
 await run([bin, "package", theme, themeArchive], consumer);
 await run([bin, "validate", themeArchive], consumer);
 
-console.log(`Pack check passed in ${temporary}`);
+console.log("Pack check passed.");
+} finally {
+  await rm(temporary, { recursive: true, force: true });
+}

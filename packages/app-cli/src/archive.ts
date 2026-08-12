@@ -8,21 +8,24 @@ import {
 } from "@hiraya-team/apps-contracts/scene";
 import { parseCustomTheme, type CustomTheme, type ThemeWallpaperKind } from "@hiraya-team/apps-contracts/theme";
 import { parse as parseModule } from "acorn";
-import { unzipSync, zipSync, type Zippable } from "fflate";
+import { unzipSync } from "fflate";
 import { parse } from "parse5";
+import {
+  ARCHIVE_LIMITS,
+  createDeterministicZip,
+  decodeText,
+  normalizeArchivePath,
+  normalizePackageFiles,
+  parseJson,
+  utf8Decoder,
+} from "./archive-utils";
 
 export const APP_ARCHIVE_EXTENSION = ".hiraya.app";
 export const APP_MANIFEST_PATH = "hiraya.app.json";
 export const THEME_MANIFEST_PATH = "hiraya.theme.json";
 export { HIRAYA_SCENE_EXTENSION, HIRAYA_SCENE_MANIFEST_PATH, HIRAYA_SCENE_MIME_TYPE };
-export const APP_ARCHIVE_LIMITS = {
-  archiveBytes: 32 * 1024 * 1024,
-  entries: 512,
-  entryBytes: 16 * 1024 * 1024,
-  expandedBytes: 64 * 1024 * 1024,
-  manifestBytes: 128 * 1024,
-  compressionRatio: 200,
-} as const;
+export const APP_ARCHIVE_LIMITS = ARCHIVE_LIMITS;
+export { normalizeArchivePath };
 
 interface ZipEntry {
   path: string;
@@ -77,9 +80,6 @@ export type SceneDraftInspection = Omit<ScenePackageInspection, "manifest"> & {
 };
 export type HirayaPackageInspection = ({ kind: "app" } & AppPackageInspection) | ThemePackageInspection | ScenePackageInspection;
 
-const decoder = new TextDecoder("utf-8", { fatal: true });
-const DETERMINISTIC_TIMESTAMP = new Date("1980-01-01T00:00:00.000Z");
-
 function uint16(bytes: Uint8Array, offset: number) {
   return bytes[offset] | (bytes[offset + 1] << 8);
 }
@@ -88,20 +88,10 @@ function uint32(bytes: Uint8Array, offset: number) {
   return (bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)) >>> 0;
 }
 
-export function normalizeArchivePath(input: string) {
-  const path = input.normalize("NFC");
-  if (
-    path.length === 0 || path.length > 1024 || path.includes("\\") || path.includes("\0") ||
-    path.startsWith("/") || /^[A-Za-z]:\//.test(path) ||
-    path.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
-  ) throw new TypeError(`Archive contains unsafe path: ${JSON.stringify(input)}.`);
-  return path;
-}
-
 function decodeZipName(bytes: Uint8Array, utf8: boolean) {
   if (!utf8 && bytes.some((byte) => byte > 0x7f)) throw new TypeError("Archive contains a non-UTF-8 path.");
   try {
-    return decoder.decode(bytes);
+    return utf8Decoder.decode(bytes);
   } catch {
     throw new TypeError("Archive contains an invalid UTF-8 path.");
   }
@@ -177,14 +167,6 @@ function readZipDirectory(bytes: Uint8Array) {
     if (localPath !== entry.path) throw new TypeError("Archive local and central paths do not match.");
   }
   return { entries, expandedBytes };
-}
-
-function decodeText(bytes: Uint8Array, label: string) {
-  try {
-    return decoder.decode(bytes);
-  } catch {
-    throw new TypeError(`${label} must be valid UTF-8.`);
-  }
 }
 
 function localReference(reference: string, fromPath: string, label: string) {
@@ -341,7 +323,8 @@ function parseThemeManifest(value: unknown): HirayaThemeManifest {
   const wallpaper = candidate.wallpaper as Record<string, unknown>;
   exact(wallpaper, ["kind", "entrypoint"], ["fit", "positionX", "positionY", "blur", "dim", "overlayColor", "overlayOpacity"], "Theme wallpaper");
   if (wallpaper.kind !== "static" && wallpaper.kind !== "animated" && wallpaper.kind !== "scene") throw new TypeError("Theme wallpaper kind is invalid.");
-  const entrypoint = normalizeArchivePath(String(wallpaper.entrypoint));
+  if (typeof wallpaper.entrypoint !== "string") throw new TypeError("Theme wallpaper entrypoint is invalid.");
+  const entrypoint = normalizeArchivePath(wallpaper.entrypoint);
   const optionalNumber = (key: string, min: number, max: number, integer = false) => {
     const number = wallpaper[key];
     if (number === undefined) return undefined;
@@ -368,66 +351,43 @@ function parseThemeManifest(value: unknown): HirayaThemeManifest {
 }
 
 export function validateThemeFiles(files: ReadonlyMap<string, Uint8Array>) {
-  const manifestBytes = files.get(THEME_MANIFEST_PATH);
+  const { files: normalized } = normalizePackageFiles(files);
+  const manifestBytes = normalized.get(THEME_MANIFEST_PATH);
   if (!manifestBytes) throw new TypeError(`Package must contain ${THEME_MANIFEST_PATH} at its root.`);
   if (manifestBytes.byteLength > APP_ARCHIVE_LIMITS.manifestBytes) throw new TypeError("Theme manifest exceeds the size limit.");
-  let value: unknown;
-  try { value = JSON.parse(decodeText(manifestBytes, "Theme manifest")); } catch (error) {
-    if (error instanceof TypeError && error.message.endsWith("valid UTF-8.")) throw error;
-    throw new TypeError("Theme manifest must be valid JSON.");
-  }
-  const manifest = parseThemeManifest(value);
+  const manifest = parseThemeManifest(parseJson(manifestBytes, "Theme manifest"));
   if (manifest.wallpaper) {
     const path = manifest.wallpaper.entrypoint;
-    if (!files.has(path)) throw new TypeError(`Theme wallpaper entrypoint is missing: ${path}.`);
+    if (!normalized.has(path)) throw new TypeError(`Theme wallpaper entrypoint is missing: ${path}.`);
     if (manifest.wallpaper.kind === "scene") {
       if (!/\.html?$/i.test(path)) throw new TypeError("Theme scene entrypoint must be an HTML file.");
-      validateHtml(path, files);
+      validateHtml(path, normalized);
     } else {
       const allowed = manifest.wallpaper.kind === "static" ? /\.(?:jpe?g|png|webp)$/i : /\.(?:gif|webp|webm|mp4)$/i;
       if (!allowed.test(path)) throw new TypeError(`Theme ${manifest.wallpaper.kind} wallpaper uses an unsupported file type.`);
     }
   }
-  return { manifest, files };
+  return { manifest, files: normalized };
 }
 
 export function validateSceneFiles(files: ReadonlyMap<string, Uint8Array>) {
-  const manifestBytes = files.get(HIRAYA_SCENE_MANIFEST_PATH);
+  const { files: normalized } = normalizePackageFiles(files);
+  const manifestBytes = normalized.get(HIRAYA_SCENE_MANIFEST_PATH);
   if (!manifestBytes) throw new TypeError(`Package must contain ${HIRAYA_SCENE_MANIFEST_PATH} at its root.`);
   if (manifestBytes.byteLength > APP_ARCHIVE_LIMITS.manifestBytes) throw new TypeError("Scene manifest exceeds the size limit.");
-  let value: unknown;
-  try { value = JSON.parse(decodeText(manifestBytes, "Scene manifest")); } catch (error) {
-    if (error instanceof TypeError && error.message.endsWith("valid UTF-8.")) throw error;
-    throw new TypeError("Scene manifest must be valid JSON.");
-  }
-  const manifest = parseSceneManifestV1(value);
+  const manifest = parseSceneManifestV1(parseJson(manifestBytes, "Scene manifest"));
   const entrypoint = normalizeArchivePath(manifest.entrypoint);
-  if (!files.has(entrypoint)) throw new TypeError(`Scene entrypoint is missing: ${entrypoint}.`);
-  validateHtml(entrypoint, files);
-  return { manifest: { ...manifest, entrypoint }, files };
+  if (!normalized.has(entrypoint)) throw new TypeError(`Scene entrypoint is missing: ${entrypoint}.`);
+  validateHtml(entrypoint, normalized);
+  return { manifest: { ...manifest, entrypoint }, files: normalized };
 }
 
 export function validateAppFiles(files: ReadonlyMap<string, Uint8Array>) {
-  const normalized = new Map<string, Uint8Array>();
-  let expandedBytes = 0;
-  for (const [rawPath, bytes] of files) {
-    const path = normalizeArchivePath(rawPath);
-    if (normalized.has(path)) throw new TypeError(`Package contains duplicate normalized path: ${path}.`);
-    if (bytes.byteLength > APP_ARCHIVE_LIMITS.entryBytes) throw new TypeError(`Package file exceeds the size limit: ${path}.`);
-    expandedBytes += bytes.byteLength;
-    if (normalized.size >= APP_ARCHIVE_LIMITS.entries) throw new TypeError("Package contains too many files.");
-    if (expandedBytes > APP_ARCHIVE_LIMITS.expandedBytes) throw new TypeError("Package exceeds the expanded size limit.");
-    normalized.set(path, bytes);
-  }
+  const { files: normalized, expandedBytes } = normalizePackageFiles(files);
   const manifestBytes = normalized.get(APP_MANIFEST_PATH);
   if (!manifestBytes) throw new TypeError(`Package must contain ${APP_MANIFEST_PATH} at its root.`);
   if (manifestBytes.byteLength > APP_ARCHIVE_LIMITS.manifestBytes) throw new TypeError("App manifest exceeds the size limit.");
-  let manifestValue: unknown;
-  try { manifestValue = JSON.parse(decodeText(manifestBytes, "App manifest")); } catch (error) {
-    if (error instanceof TypeError && error.message.endsWith("valid UTF-8.")) throw error;
-    throw new TypeError("App manifest must be valid JSON.");
-  }
-  const manifest = parseManifestV2(manifestValue);
+  const manifest = parseManifestV2(parseJson(manifestBytes, "App manifest"));
   if (!/\.html?$/i.test(manifest.entrypoint)) throw new TypeError("App entrypoint must be an HTML file.");
   if (!normalized.has(manifest.entrypoint)) throw new TypeError(`App entrypoint is missing: ${manifest.entrypoint}.`);
   if (manifest.icon !== undefined && !normalized.has(manifest.icon)) throw new TypeError(`App icon is missing: ${manifest.icon}.`);
@@ -497,17 +457,7 @@ export async function openSceneArchive(bytes: Uint8Array): Promise<SceneDraftIns
 }
 
 function prepareSceneFiles(files: ReadonlyMap<string, Uint8Array>) {
-  const normalized = new Map<string, Uint8Array>();
-  let expandedBytes = 0;
-  for (const [rawPath, bytes] of files) {
-    const path = normalizeArchivePath(rawPath);
-    if (normalized.has(path)) throw new TypeError(`Package contains duplicate normalized path: ${path}.`);
-    if (bytes.byteLength > APP_ARCHIVE_LIMITS.entryBytes) throw new TypeError(`Package file exceeds the size limit: ${path}.`);
-    if (normalized.size >= APP_ARCHIVE_LIMITS.entries) throw new TypeError("Package contains too many files.");
-    expandedBytes += bytes.byteLength;
-    if (expandedBytes > APP_ARCHIVE_LIMITS.expandedBytes) throw new TypeError("Package exceeds the expanded size limit.");
-    normalized.set(path, bytes);
-  }
+  const { files: normalized } = normalizePackageFiles(files);
   if (manifestKind(normalized) !== HIRAYA_SCENE_MANIFEST_PATH) throw new TypeError("Package files are not a scene.");
   const manifestBytes = normalized.get(HIRAYA_SCENE_MANIFEST_PATH)!;
   if (manifestBytes.byteLength > APP_ARCHIVE_LIMITS.manifestBytes) throw new TypeError("Scene manifest exceeds the size limit.");
@@ -516,11 +466,7 @@ function prepareSceneFiles(files: ReadonlyMap<string, Uint8Array>) {
 }
 
 export function createSceneArchive(files: ReadonlyMap<string, Uint8Array>) {
-  const archive: Zippable = {};
-  for (const [path, bytes] of [...prepareSceneFiles(files)].sort(([left], [right]) => left.localeCompare(right, "en"))) {
-    archive[path] = [bytes, { level: 6, mtime: DETERMINISTIC_TIMESTAMP }];
-  }
-  const zipped = zipSync(archive, { level: 6, mtime: DETERMINISTIC_TIMESTAMP });
+  const zipped = createDeterministicZip(prepareSceneFiles(files));
   readZipDirectory(zipped);
   return zipped;
 }

@@ -17,6 +17,5 @@
       "@hiraya-team/app-cli": ["packages/app-cli/src/archive.ts"]
     }
   },
-  "include": ["packages/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["packages/app-cli/templates", "**/*.test.ts"]
+  "include": ["packages/**/*.ts", "scripts/**/*.ts"]
 }
