@@ -10,10 +10,10 @@
     "package": "bun run build && hiraya-app package dist"
   },
   "dependencies": {
-    "@hiraya-team/apps-sdk": "2.2.0"
+    "@hiraya-team/apps-sdk": "2.3.0"
   },
   "devDependencies": {
-    "@hiraya-team/app-cli": "2.2.0",
+    "@hiraya-team/app-cli": "2.3.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

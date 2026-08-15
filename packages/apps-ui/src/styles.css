@@ -1,0 +1,41 @@
+.hiraya-button {
+  min-block-size: 2.75rem;
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--hiraya-accent, #96651d);
+  border-radius: 0.625rem;
+  background: var(--hiraya-accent, #96651d);
+  color: var(--hiraya-accent-text, #ffffff);
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+
+.hiraya-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--hiraya-accent, #96651d) 88%, var(--hiraya-text, #192229));
+}
+
+.hiraya-button:focus-visible {
+  outline: 3px solid var(--hiraya-focus, #5d3b00);
+  outline-offset: 2px;
+}
+
+.hiraya-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hiraya-button { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .hiraya-button {
+    border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+
+  .hiraya-button:focus-visible { outline-color: Highlight; }
+}

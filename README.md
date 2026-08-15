@@ -1,10 +1,11 @@
 # Hiraya App Kit
 
-Public contracts, browser SDK, and packaging CLI for third-party Hiraya apps.
+Public contracts, Solid controls, browser SDK, and packaging CLI for third-party Hiraya apps.
 
 ## Packages
 
 - `@hiraya-team/apps-contracts` provides protocol types and strict boundary validation. Portable desktop-theme contracts are available from `@hiraya-team/apps-contracts/theme`.
+- `@hiraya-team/apps-ui` provides accessible Solid controls styled by Hiraya's semantic theme variables.
 - `@hiraya-team/apps-sdk` provides the typed browser client used inside the Hiraya app sandbox.
 - `@hiraya-team/app-cli` provides Node-free archive inspection from its root export and the `hiraya-app` executable for creating, validating, inspecting, and deterministically packaging apps and themes.
 

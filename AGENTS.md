@@ -1,6 +1,6 @@
 # Hiraya App Kit Agent Guide
 
-Use Bun for installation, scripts, tests, builds, and packaging. Keep all three package versions synchronized and keep internal dependencies exact.
+Use Bun for installation, scripts, tests, builds, and packaging. Keep all published package versions synchronized and keep internal dependencies exact.
 
 Published exports must point only to compiled ESM JavaScript and declarations in `dist`. Never publish raw TypeScript or add imports into the Hiraya frontend. Keep `@hiraya-team/app-cli`'s root archive API browser-importable; filesystem and path modules belong only to executable implementation files.
 

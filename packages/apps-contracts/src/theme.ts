@@ -2,6 +2,20 @@ export type ThemeFontFamily = "humanist" | "system" | "mono";
 export type ThemeTexture = "none" | "halftone" | "dither";
 export type ThemeWallpaperKind = "static" | "animated" | "scene";
 
+export interface ThemeTokens {
+  mode: "light" | "dark";
+  background: string;
+  surface: string;
+  surfaceElevated: string;
+  text: string;
+  textMuted: string;
+  border: string;
+  accent: string;
+  accentText: string;
+  danger: string;
+  focus: string;
+}
+
 export type ThemeTreatment = {
   gradientStrength: number;
   gradientAngle: number;
@@ -48,6 +62,7 @@ const COLOR_KEYS: Array<keyof ThemeColors> = [
 ];
 const HEX_COLOR = /^#[\da-f]{6}$/i;
 const GRADIENT_ANGLES = new Set([0, 45, 90, 135, 180, 225, 270, 315]);
+const THEME_TOKEN_KEYS = ["mode", "background", "surface", "surfaceElevated", "text", "textMuted", "border", "accent", "accentText", "danger", "focus"] as const;
 
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("The theme has an unsupported format.");
@@ -89,6 +104,29 @@ function strongest(background: string, candidates: readonly string[]) {
 function strongestMinimum(backgrounds: readonly string[], candidates: readonly string[]) {
   const minimum = (candidate: string) => Math.min(...backgrounds.map((background) => contrast(candidate, background)));
   return candidates.reduce((best, candidate) => minimum(candidate) > minimum(best) ? candidate : best);
+}
+
+export function parseThemeTokens(value: unknown): ThemeTokens {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError("Theme tokens must be an object.");
+  const theme = value as Record<string, unknown>;
+  if (THEME_TOKEN_KEYS.some((key) => !(key in theme)) || Object.keys(theme).some((key) => !THEME_TOKEN_KEYS.includes(key as (typeof THEME_TOKEN_KEYS)[number]))) {
+    throw new TypeError("Theme tokens has an unsupported shape.");
+  }
+  if (theme.mode !== "light" && theme.mode !== "dark") throw new TypeError("Theme mode is invalid.");
+  const token = (key: Exclude<(typeof THEME_TOKEN_KEYS)[number], "mode">) => {
+    const item = theme[key];
+    if (typeof item !== "string" || item.length === 0 || item.length > 128 || [...item].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code < 32 || code === 127;
+    })) throw new TypeError(`Theme token ${key} is invalid.`);
+    return item;
+  };
+  return {
+    mode: theme.mode,
+    background: token("background"), surface: token("surface"), surfaceElevated: token("surfaceElevated"),
+    text: token("text"), textMuted: token("textMuted"), border: token("border"), accent: token("accent"),
+    accentText: token("accentText"), danger: token("danger"), focus: token("focus"),
+  };
 }
 
 function hasContrastIssues(definition: ThemeDefinition) {

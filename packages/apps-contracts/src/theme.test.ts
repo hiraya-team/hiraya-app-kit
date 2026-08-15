@@ -1,5 +1,25 @@
 import { expect, test } from "bun:test";
-import { parseCustomTheme, parseThemeDefinition } from "./theme";
+import { parseCustomTheme, parseThemeDefinition, parseThemeTokens } from "./theme";
+
+const tokens = {
+  mode: "dark",
+  background: "#172329",
+  surface: "#f2f1eb",
+  surfaceElevated: "#ffffff",
+  text: "#192229",
+  textMuted: "#59625f",
+  border: "#c6c9c1",
+  accent: "#96651d",
+  accentText: "#ffffff",
+  danger: "#983c34",
+  focus: "#e7b964",
+} as const;
+
+test("validates semantic runtime theme tokens", () => {
+  expect(parseThemeTokens(tokens)).toEqual(tokens);
+  expect(() => parseThemeTokens({ ...tokens, mode: "system" })).toThrow("mode");
+  expect(() => parseThemeTokens({ ...tokens, legacyAccent: "#fff" })).toThrow("unsupported shape");
+});
 
 test("validates portable theme definitions", () => {
   const definition = {
