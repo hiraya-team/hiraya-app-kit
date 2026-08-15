@@ -39,6 +39,11 @@ jobs:
           version="$(bun -p "require('./package.json').version")"
           npm view "@hiraya-team/apps-sdk@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
         working-directory: packages/apps-sdk
+      - name: Publish Solid UI
+        run: |
+          version="$(bun -p "require('./package.json').version")"
+          npm view "@hiraya-team/apps-ui@$version" version >/dev/null 2>&1 || npm publish --access public --provenance
+        working-directory: packages/apps-ui
       - name: Publish CLI
         run: |
           version="$(bun -p "require('./package.json').version")"

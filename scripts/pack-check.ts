@@ -8,7 +8,7 @@ try {
   const tarballs = join(temporary, "tarballs");
   await mkdir(tarballs);
 
-  const packages = ["apps-contracts", "apps-sdk", "app-cli"] as const;
+  const packages = ["apps-contracts", "apps-sdk", "apps-ui", "app-cli"] as const;
   const archives = new Map<string, string>();
   const version = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version as string;
 
@@ -50,6 +50,10 @@ const packedDependencies = Object.fromEntries(packages.map((name) => [`@hiraya-t
 
 const cliArchiveSource = await readFile(join(temporary, "unpacked-app-cli", "package", "dist", "archive.js"), "utf8");
 if (/node:(?:fs|path|url|os)/.test(cliArchiveSource)) throw new Error("The app-cli root export imports Node filesystem modules.");
+const uiPackage = JSON.parse(await readFile(join(temporary, "unpacked-apps-ui", "package", "package.json"), "utf8"));
+if (uiPackage.exports?.["./styles.css"] !== "./dist/styles.css") throw new Error("The apps-ui package must export its compiled stylesheet.");
+const uiStyles = await readFile(join(temporary, "unpacked-apps-ui", "package", "dist", "styles.css"), "utf8");
+if (!uiStyles.includes(".hiraya-button") || !uiStyles.includes(":focus-visible")) throw new Error("The apps-ui stylesheet is incomplete.");
 
 const consumer = join(temporary, "consumer");
 await mkdir(consumer);
@@ -58,18 +62,25 @@ await writeFile(join(consumer, "package.json"), JSON.stringify({
   private: true,
   type: "module",
   dependencies: packedDependencies,
+  peerDependencies: { "@solidjs/web": "2.0.0-rc.0", "solid-js": "2.0.0-rc.0" },
   overrides: packedDependencies,
 }, null, 2));
 await writeFile(join(consumer, "imports.ts"), `
 import { parseManifestV2 } from "@hiraya-team/apps-contracts";
-import { parseCustomTheme } from "@hiraya-team/apps-contracts/theme";
+import { parseCustomTheme, parseThemeTokens } from "@hiraya-team/apps-contracts/theme";
 import { HIRAYA_SCENE_MIME_TYPE, parseSceneManifestV1 } from "@hiraya-team/apps-contracts/scene";
 import { connectHiraya } from "@hiraya-team/apps-sdk";
 import { APP_MANIFEST_PATH, createSceneArchive, inspectAppArchive, inspectSceneArchive, openSceneArchive, repackSceneArchive } from "@hiraya-team/app-cli";
-if (typeof parseManifestV2 !== "function" || typeof parseCustomTheme !== "function" || typeof parseSceneManifestV1 !== "function" || HIRAYA_SCENE_MIME_TYPE !== "application/vnd.hiraya.scene+zip" || typeof connectHiraya !== "function" || typeof inspectAppArchive !== "function" || typeof inspectSceneArchive !== "function" || typeof openSceneArchive !== "function" || typeof createSceneArchive !== "function" || typeof repackSceneArchive !== "function" || APP_MANIFEST_PATH !== "hiraya.app.json") throw new Error("Published exports are incomplete.");
+if (typeof parseManifestV2 !== "function" || typeof parseCustomTheme !== "function" || typeof parseThemeTokens !== "function" || typeof parseSceneManifestV1 !== "function" || HIRAYA_SCENE_MIME_TYPE !== "application/vnd.hiraya.scene+zip" || typeof connectHiraya !== "function" || typeof inspectAppArchive !== "function" || typeof inspectSceneArchive !== "function" || typeof openSceneArchive !== "function" || typeof createSceneArchive !== "function" || typeof repackSceneArchive !== "function" || APP_MANIFEST_PATH !== "hiraya.app.json") throw new Error("Published exports are incomplete.");
+`);
+await writeFile(join(consumer, "ui-imports.ts"), `
+import { Button } from "@hiraya-team/apps-ui";
+import "@hiraya-team/apps-ui/styles.css";
+export { Button };
 `);
 await run(["bun", "install"], consumer);
 await run(["bun", "imports.ts"], consumer);
+await run(["bun", "build", "ui-imports.ts", "--target", "browser", "--outdir", "ui-dist"], consumer);
 
 const bin = join(consumer, "node_modules", ".bin", "hiraya-app");
 const app = join(consumer, "sample-app");

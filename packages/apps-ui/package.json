@@ -1,0 +1,20 @@
+{
+  "name": "@hiraya-team/apps-ui",
+  "version": "2.3.0",
+  "description": "Solid UI controls for Hiraya apps.",
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./styles.css": "./dist/styles.css"
+  },
+  "types": "./dist/index.d.ts",
+  "sideEffects": ["./dist/styles.css"],
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/", "provenance": true },
+  "repository": { "type": "git", "url": "git+https://github.com/hiraya-team/hiraya-app-kit.git", "directory": "packages/apps-ui" },
+  "license": "MIT",
+  "peerDependencies": {
+    "@solidjs/web": "2.0.0-rc.0",
+    "solid-js": "2.0.0-rc.0"
+  }
+}

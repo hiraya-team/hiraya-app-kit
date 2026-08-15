@@ -1,6 +1,6 @@
 {
   "name": "@hiraya-team/apps-contracts",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Public protocol and package contracts for Hiraya apps.",
   "type": "module",
   "exports": {

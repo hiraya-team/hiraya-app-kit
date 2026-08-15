@@ -1,6 +1,6 @@
-import { parseCustomTheme, parseThemeDefinition, type ThemeDefinition } from "./theme";
+import { parseCustomTheme, parseThemeDefinition, parseThemeTokens, type ThemeDefinition, type ThemeTokens } from "./theme";
 
-export type { ThemeDefinition } from "./theme";
+export { parseThemeTokens, type ThemeDefinition, type ThemeTokens } from "./theme";
 
 export const APPS_PROTOCOL_VERSION = 1 as const;
 export const APP_CATALOG_SCHEMA_VERSION = 1 as const;
@@ -75,20 +75,6 @@ export type AppManifestWindow = AppManifestWindowMinimums & (
   | { width: number; height: number; renderWidth?: never; renderHeight?: never }
   | { renderWidth: number; renderHeight: number; width?: never; height?: never }
 );
-
-export interface ThemeTokens {
-  mode: "light" | "dark";
-  background: string;
-  surface: string;
-  surfaceElevated: string;
-  text: string;
-  textMuted: string;
-  border: string;
-  accent: string;
-  accentText: string;
-  danger: string;
-  focus: string;
-}
 
 export interface LaunchContext {
   protocolVersion: 1;
@@ -496,21 +482,6 @@ export function parseAppCatalog(value: unknown): AppCatalog {
   });
   if (new Set(releases.map(({ slug }) => slug)).size !== releases.length || new Set(releases.map(({ fileName }) => fileName)).size !== releases.length || new Set(releases.map(({ manifest }) => manifest.id)).size !== releases.length) throw new TypeError("App catalog releases must have unique slugs, file names, and app IDs.");
   return { schemaVersion: APP_CATALOG_SCHEMA_VERSION, releases };
-}
-
-const themeKeys = ["mode", "background", "surface", "surfaceElevated", "text", "textMuted", "border", "accent", "accentText", "danger", "focus"] as const;
-
-export function parseThemeTokens(value: unknown): ThemeTokens {
-  const theme = record(value, "Theme tokens");
-  exact(theme, themeKeys, [], "Theme tokens");
-  if (theme.mode !== "light" && theme.mode !== "dark") throw new TypeError("Theme mode is invalid.");
-  const token = (key: Exclude<(typeof themeKeys)[number], "mode">) => text(theme[key], `Theme token ${key}`, 128);
-  return {
-    mode: theme.mode,
-    background: token("background"), surface: token("surface"), surfaceElevated: token("surfaceElevated"),
-    text: token("text"), textMuted: token("textMuted"), border: token("border"), accent: token("accent"),
-    accentText: token("accentText"), danger: token("danger"), focus: token("focus"),
-  };
 }
 
 export function parseLaunchContext(value: unknown): LaunchContext {

@@ -24,8 +24,8 @@ describe("hiraya-app init", () => {
     expect(manifest).toEqual(expect.objectContaining({ schemaVersion: 2, uiRuntime: 1, id: "com.example.field-notes", name: "Field Notes" }));
     expect(packageMetadata).toEqual(expect.objectContaining({
       name: "hiraya-app-field-notes",
-      dependencies: { "@hiraya-team/apps-sdk": "2.2.0" },
-      devDependencies: expect.objectContaining({ "@hiraya-team/app-cli": "2.2.0" }),
+      dependencies: { "@hiraya-team/apps-sdk": "2.3.0" },
+      devDependencies: expect.objectContaining({ "@hiraya-team/app-cli": "2.3.0" }),
     }));
     expect(await readFile(join(destination, "src", "main.ts"), "utf8")).toContain('const APP_ID = "com.example.field-notes";');
     const guide = await readFile(join(destination, "AGENTS.md"), "utf8");
